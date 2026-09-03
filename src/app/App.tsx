@@ -1,12 +1,17 @@
 import { Canvas } from '@react-three/fiber'
-import { ArrowDown, ArrowUp, Camera, FolderPlus, Grid3X3, Library, Pencil, Plus, Search, SlidersHorizontal, Tag, Trash2, Upload, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Camera, FolderMinus, FolderPlus, Grid3X3, Library, Pencil, Plus, Search, SlidersHorizontal, Tag, Trash2, Upload, X } from 'lucide-react'
 import { OrbitControls } from '@react-three/drei'
 import { useEffect, useRef, useState } from 'react'
 import { validateModelFile } from '../domain/fileValidation'
+import { generateModelThumbnail } from '../domain/thumbnail'
 import type { ModelAsset, SceneInstance, Shelf } from '../domain/types'
+import { getShelfItemPosition, layoutShelfInstances, SHELF_ITEMS_PER_LEVEL } from '../domain/shelfLayout'
 import { shelfDatabase } from '../storage/db'
 import { ModelViewer } from '../features/viewer/ModelViewer'
 import { ShelfScene } from '../features/shelf-scene/ShelfScene'
+
+const MIN_ITEMS_PER_LEVEL = 1
+const MAX_ITEMS_PER_LEVEL = 8
 
 function ShelfPreview() {
   return (
@@ -56,24 +61,35 @@ export function App() {
   const [selectedModelUrl, setSelectedModelUrl] = useState('')
   const [sceneInstances, setSceneInstances] = useState<SceneInstance[]>([])
   const [sceneUrls, setSceneUrls] = useState<Record<string, string>>({})
+  const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({})
   const [shelfDialog, setShelfDialog] = useState<{ mode: 'create' | 'rename'; shelf?: Shelf } | null>(null)
   const [shelfName, setShelfName] = useState('')
   const [storageUsed, setStorageUsed] = useState('calculando')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const thumbnailUrlsRef = useRef<Record<string, string>>({})
 
   useEffect(() => {
     let mounted = true
     Promise.all([shelfDatabase.models.toArray(), shelfDatabase.shelves.toArray(), shelfDatabase.sceneInstances.toArray()]).then(async ([storedModels, storedShelves, storedInstances]) => {
       let nextShelves = storedShelves
       if (nextShelves.length === 0) {
-        const defaultShelf: Shelf = { id: 'default', name: 'Minha prateleira', modelIds: storedModels.map((model) => model.id), createdAt: new Date().toISOString() }
+        const defaultShelf: Shelf = { id: 'default', name: 'Minha prateleira', modelIds: storedModels.map((model) => model.id), itemsPerLevel: SHELF_ITEMS_PER_LEVEL, createdAt: new Date().toISOString() }
         await shelfDatabase.shelves.put(defaultShelf)
         nextShelves = [defaultShelf]
       }
-      if (mounted) { setModels(storedModels); setShelves(nextShelves); setSceneInstances(storedInstances) }
+      if (mounted) {
+        setModels(storedModels)
+        setShelves(nextShelves)
+        setSceneInstances(storedInstances)
+        const loadedThumbnails = Object.fromEntries(storedModels.filter((model) => model.thumbnail).map((model) => [model.id, URL.createObjectURL(model.thumbnail!)]))
+        thumbnailUrlsRef.current = { ...thumbnailUrlsRef.current, ...loadedThumbnails }
+        setThumbnailUrls((current) => ({ ...current, ...loadedThumbnails }))
+      }
     })
     return () => { mounted = false }
   }, [])
+
+  useEffect(() => () => { Object.values(thumbnailUrlsRef.current).forEach((url) => URL.revokeObjectURL(url)) }, [])
 
   useEffect(() => {
     const updateStorage = async () => {
@@ -137,17 +153,12 @@ export function App() {
         name: file.name.replace(/\.(glb|gltf)$/i, ''),
         format: validation.format,
         sizeBytes: file.size,
-        shelfId: 'default',
         tags: [],
         createdAt: new Date().toISOString(),
       }
-      await shelfDatabase.models.put({ ...model, file })
-      const defaultShelf = shelves.find((shelf) => shelf.id === 'default') ?? shelves[0]
-      if (defaultShelf) {
-        const updatedShelf = { ...defaultShelf, modelIds: [...defaultShelf.modelIds, model.id] }
-        await shelfDatabase.shelves.put(updatedShelf)
-        setShelves((current) => current.map((shelf) => shelf.id === updatedShelf.id ? updatedShelf : shelf))
-      }
+      const thumbnail = await generateModelThumbnail(file)
+      await shelfDatabase.models.put({ ...model, file, thumbnail: thumbnail ?? undefined })
+      if (thumbnail) setThumbnailUrls((current) => ({ ...current, [model.id]: URL.createObjectURL(thumbnail) }))
       imported.push(model)
     }
     if (imported.length > 0) {
@@ -164,7 +175,7 @@ export function App() {
       await shelfDatabase.shelves.put(updatedShelf)
       setShelves((current) => current.map((item) => item.id === updatedShelf.id ? updatedShelf : item))
     } else {
-      const shelf: Shelf = { id: crypto.randomUUID(), name, modelIds: [], createdAt: new Date().toISOString() }
+      const shelf: Shelf = { id: crypto.randomUUID(), name, modelIds: [], itemsPerLevel: SHELF_ITEMS_PER_LEVEL, createdAt: new Date().toISOString() }
       await shelfDatabase.shelves.put(shelf)
       setShelves((current) => [...current, shelf])
       setActiveShelfId(shelf.id)
@@ -173,23 +184,28 @@ export function App() {
     setShelfName('')
   }
 
+  function updateShelfItemsPerLevel(shelf: Shelf, value: number) {
+    const itemsPerLevel = clampItemsPerLevel(value)
+    const updatedShelf = { ...shelf, itemsPerLevel }
+    setShelves((current) => current.map((item) => item.id === shelf.id ? updatedShelf : item))
+    void shelfDatabase.shelves.put(updatedShelf)
+  }
+
   async function renameShelf(shelf: Shelf) {
     setShelfName(shelf.name)
     setShelfDialog({ mode: 'rename', shelf })
   }
 
   async function deleteShelf(shelf: Shelf) {
-    if (shelves.length === 1 || !window.confirm(`Excluir a prateleira “${shelf.name}”?`)) return
-    const fallback = shelves.find((item) => item.id !== shelf.id)!
+    if (!window.confirm(`Excluir a prateleira “${shelf.name}”? Os modelos ficarão sem prateleira.`)) return
     await shelfDatabase.transaction('rw', shelfDatabase.shelves, shelfDatabase.models, async () => {
       const shelfModels = await shelfDatabase.models.where('shelfId').equals(shelf.id).toArray()
-      await Promise.all(shelfModels.map((model) => shelfDatabase.models.update(model.id, { shelfId: fallback.id })))
+      await Promise.all(shelfModels.map((model) => shelfDatabase.models.update(model.id, { shelfId: undefined })))
       await shelfDatabase.shelves.delete(shelf.id)
-      await shelfDatabase.shelves.put({ ...fallback, modelIds: [...fallback.modelIds, ...shelf.modelIds] })
     })
-    setShelves((current) => current.filter((item) => item.id !== shelf.id).map((item) => item.id === fallback.id ? { ...item, modelIds: [...item.modelIds, ...shelf.modelIds] } : item))
-    setModels((current) => current.map((model) => model.shelfId === shelf.id ? { ...model, shelfId: fallback.id } : model))
-    setActiveShelfId(fallback.id)
+    setShelves((current) => current.filter((item) => item.id !== shelf.id))
+    setModels((current) => current.map((model) => model.shelfId === shelf.id ? { ...model, shelfId: undefined } : model))
+    setActiveShelfId('all')
   }
 
   async function updateModel(model: ModelAsset, changes: Partial<ModelAsset>) {
@@ -211,25 +227,57 @@ export function App() {
     setShelves((current) => current.map((item) => item.id === shelf.id ? updatedShelf : item))
   }
 
-  async function moveToShelf(model: ModelAsset, shelfId: string) {
+  async function deleteModel(model: ModelAsset) {
+    if (!window.confirm(`Excluir o modelo “${model.name}”?`)) return
+    const affectedInstances = sceneInstances.filter((instance) => instance.modelId === model.id)
+    await shelfDatabase.transaction('rw', shelfDatabase.models, shelfDatabase.shelves, shelfDatabase.sceneInstances, async () => {
+      await shelfDatabase.models.delete(model.id)
+      await Promise.all(affectedInstances.map((instance) => shelfDatabase.sceneInstances.delete(instance.id)))
+      await Promise.all(shelves.map((shelf) => shelf.modelIds.includes(model.id) ? shelfDatabase.shelves.put({ ...shelf, modelIds: shelf.modelIds.filter((id) => id !== model.id) }) : Promise.resolve()))
+    })
+    setModels((current) => current.filter((item) => item.id !== model.id))
+    setShelves((current) => current.map((shelf) => ({ ...shelf, modelIds: shelf.modelIds.filter((id) => id !== model.id) })))
+    setSceneInstances((current) => current.filter((instance) => instance.modelId !== model.id))
+    const thumbnailUrl = thumbnailUrlsRef.current[model.id]
+    if (thumbnailUrl) {
+      URL.revokeObjectURL(thumbnailUrl)
+      delete thumbnailUrlsRef.current[model.id]
+      setThumbnailUrls((current) => { const next = { ...current }; delete next[model.id]; return next })
+    }
+    setMessage(`${model.name} excluído.`)
+  }
+
+  async function removeFromShelf(model: ModelAsset) {
+    if (!model.shelfId) return
+    await moveToShelf(model, undefined)
+    setMessage(`${model.name} removido da prateleira.`)
+  }
+
+  async function moveToShelf(model: ModelAsset, shelfId: string | undefined) {
     if (model.shelfId === shelfId) return
     const origin = shelves.find((shelf) => shelf.id === model.shelfId)
-    const destination = shelves.find((shelf) => shelf.id === shelfId)
-    if (!destination) return
+    const destination = shelfId ? shelves.find((shelf) => shelf.id === shelfId) : undefined
+    if (shelfId && !destination) return
     await updateModel(model, { shelfId })
     const updatedShelves = shelves.map((shelf) => {
       if (shelf.id === origin?.id) return { ...shelf, modelIds: shelf.modelIds.filter((id) => id !== model.id) }
-      if (shelf.id === destination.id) return { ...shelf, modelIds: [...shelf.modelIds, model.id] }
+      if (shelf.id === destination?.id) return { ...shelf, modelIds: [...shelf.modelIds, model.id] }
       return shelf
     })
     await shelfDatabase.shelves.bulkPut(updatedShelves)
     setShelves(updatedShelves)
   }
 
-  async function addToScene(model: ModelAsset) {
-    if (sceneInstances.some((instance) => instance.modelId === model.id)) return setMessage('Este modelo já está na cena.')
+  async function toggleScene(model: ModelAsset) {
+    const existing = sceneInstances.find((instance) => instance.modelId === model.id)
+    if (existing) {
+      await shelfDatabase.sceneInstances.delete(existing.id)
+      setSceneInstances((current) => current.filter((instance) => instance.id !== existing.id))
+      setMessage(`${model.name} removido da cena.`)
+      return
+    }
     const index = sceneInstances.length
-    const instance: SceneInstance = { id: crypto.randomUUID(), modelId: model.id, position: [((index % 4) - 1.5) * 1.7, index < 4 ? -1.25 : 0.5, 0.1], scale: 0.72 }
+    const instance: SceneInstance = { id: crypto.randomUUID(), modelId: model.id, position: getShelfItemPosition(index, index + 1, activeShelfItemsPerLevel), scale: 0.72 }
     await shelfDatabase.sceneInstances.put(instance)
     setSceneInstances((current) => [...current, instance])
     setMessage(`${model.name} adicionado à cena.`)
@@ -246,11 +294,17 @@ export function App() {
   }
 
   const activeShelf = shelves.find((shelf) => shelf.id === activeShelfId)
+  const activeShelfItemsPerLevel = activeShelf?.itemsPerLevel ?? SHELF_ITEMS_PER_LEVEL
   const visibleModels = models.filter((model) => {
     const normalizedQuery = query.trim().toLowerCase()
     const inShelf = activeShelfId === 'all' || model.shelfId === activeShelfId
     return inShelf && (!normalizedQuery || model.name.toLowerCase().includes(normalizedQuery) || model.tags.some((tag) => tag.toLowerCase().includes(normalizedQuery)))
   })
+  const visibleSceneInstances = sceneInstances.filter((instance) => {
+    const model = models.find((item) => item.id === instance.modelId)
+    return activeShelfId === 'all' || model?.shelfId === activeShelfId
+  })
+  const arrangedSceneInstances = layoutShelfInstances(visibleSceneInstances, activeShelfItemsPerLevel)
   const openFilePicker = () => fileInputRef.current?.click()
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -281,14 +335,14 @@ export function App() {
         <section className="content">
           <div className="content-head">
             <div><p className="eyebrow">biblioteca / {(activeShelf?.name ?? 'todos os modelos').toLowerCase()}</p><h1>{activeShelf?.name ?? 'Todos os modelos'}</h1></div>
-            <button className="upload-button" onClick={openFilePicker}><Upload size={17} /> Importar modelos</button>
+            <div className="content-actions">{activeShelf && <label className="shelf-setting"><span>Itens por andar</span><input type="number" min={MIN_ITEMS_PER_LEVEL} max={MAX_ITEMS_PER_LEVEL} value={activeShelfItemsPerLevel} onChange={(event) => void updateShelfItemsPerLevel(activeShelf, event.currentTarget.valueAsNumber)} /></label>}<button className="upload-button" onClick={openFilePicker}><Upload size={17} /> Importar modelos</button></div>
           </div>
           <div className="toolbar"><label className="search-box"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nome ou tag..." /></label><button className="view-toggle active" aria-label="Visualização em grade"><Grid3X3 size={17} /></button><button className="view-toggle" aria-label="Visualização de cena"><Camera size={17} /></button></div>
           <input ref={fileInputRef} className="file-input" type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" multiple onChange={(event) => { if (event.target.files) void importFiles(event.target.files); event.target.value = '' }} />
           {message && <div className="feedback" role="status">{message}</div>}
-          {visibleModels.length === 0 ? <div className="empty-state" onDragOver={(event) => event.preventDefault()} onDrop={handleDrop}><div className="empty-icon"><Upload size={26} /></div><h2>Sua biblioteca começa aqui</h2><p>Adicione modelos GLB ou glTF para montar sua coleção visual.</p><button className="empty-action" onClick={openFilePicker}><Plus size={17} /> Adicionar primeiro modelo</button><span className="file-hint">arraste arquivos para esta área ou use o botão acima</span></div> : <div className="model-grid" onDragOver={(event) => event.preventDefault()} onDrop={handleDrop}>{visibleModels.map((model) => <article className="model-card" key={model.id}><button className={`model-thumb ${model.format}`} aria-label={`Visualizar ${model.name}`} onClick={() => setSelectedModel(model)}><Grid3X3 size={28} /></button><div className="model-card-body"><h2>{model.name}</h2><span>{model.format.toUpperCase()} · {formatBytes(model.sizeBytes)}</span><div className="tag-line"><Tag size={12} /><input placeholder="adicionar tag" onKeyDown={(event) => { if (event.key === 'Enter' && event.currentTarget.value.trim()) { void updateModel(model, { tags: [...model.tags, event.currentTarget.value.trim()] }); event.currentTarget.value = '' } }} />{model.tags.map((tag) => <em key={tag}>{tag}</em>)}</div><div className="card-actions"><select aria-label={`Mover ${model.name}`} value={model.shelfId} onChange={(event) => void moveToShelf(model, event.target.value)}>{shelves.map((shelf) => <option key={shelf.id} value={shelf.id}>{shelf.name}</option>)}</select><button aria-label="Adicionar à cena" onClick={() => void addToScene(model)}><Camera size={14} /></button><button aria-label="Mover para cima" onClick={() => void moveModel(model, -1)}><ArrowUp size={14} /></button><button aria-label="Mover para baixo" onClick={() => void moveModel(model, 1)}><ArrowDown size={14} /></button></div></div></article>)}</div>}
+          {visibleModels.length === 0 ? <div className="empty-state" onDragOver={(event) => event.preventDefault()} onDrop={handleDrop}><div className="empty-icon"><Upload size={26} /></div><h2>Sua biblioteca começa aqui</h2><p>Adicione modelos GLB ou glTF para montar sua coleção visual.</p><button className="empty-action" onClick={openFilePicker}><Plus size={17} /> Adicionar primeiro modelo</button><span className="file-hint">arraste arquivos para esta área ou use o botão acima</span></div> : <div className="model-grid" onDragOver={(event) => event.preventDefault()} onDrop={handleDrop}>{visibleModels.map((model) => <article className="model-card" key={model.id}><button className={`model-thumb ${model.format}`} aria-label={`Visualizar ${model.name}`} onClick={() => setSelectedModel(model)}>{thumbnailUrls[model.id] ? <img src={thumbnailUrls[model.id]} alt="" className="model-thumb-image" /> : <Grid3X3 size={28} />}</button><div className="model-card-body"><h2>{model.name}</h2><span>{model.format.toUpperCase()} · {formatBytes(model.sizeBytes)}</span><div className="tag-line"><Tag size={12} /><input placeholder="adicionar tag" onKeyDown={(event) => { if (event.key === 'Enter' && event.currentTarget.value.trim()) { void updateModel(model, { tags: [...model.tags, event.currentTarget.value.trim()] }); event.currentTarget.value = '' } }} />{model.tags.map((tag) => <em key={tag}>{tag}</em>)}</div><div className="card-actions"><select aria-label={`Mover ${model.name}`} value={model.shelfId ?? ''} onChange={(event) => void moveToShelf(model, event.target.value || undefined)}><option value="">sem prateleira</option>{shelves.map((shelf) => <option key={shelf.id} value={shelf.id}>{shelf.name}</option>)}</select><button aria-label={sceneInstances.some((instance) => instance.modelId === model.id) ? `Remover ${model.name} da cena` : `Adicionar ${model.name} à cena`} className={sceneInstances.some((instance) => instance.modelId === model.id) ? 'active' : ''} onClick={() => void toggleScene(model)}><Camera size={14} /></button><button aria-label="Mover para cima" disabled={!model.shelfId} onClick={() => void moveModel(model, -1)}><ArrowUp size={14} /></button><button aria-label="Mover para baixo" disabled={!model.shelfId} onClick={() => void moveModel(model, 1)}><ArrowDown size={14} /></button><button aria-label={`Retirar ${model.name} da prateleira`} disabled={!model.shelfId} onClick={() => void removeFromShelf(model)}><FolderMinus size={14} /></button><button aria-label={`Excluir ${model.name}`} onClick={() => void deleteModel(model)}><Trash2 size={14} /></button></div></div></article>)}</div>}
           {selectedModel && <div className="viewer-overlay" role="dialog" aria-modal="true" aria-label={`Visualizador de ${selectedModel.name}`}><div className="viewer-panel"><div className="viewer-header"><div><span className="eyebrow">visualizador / {selectedModel.format.toUpperCase()}</span><h2>{selectedModel.name}</h2></div><button className="viewer-close" aria-label="Fechar visualizador" onClick={() => setSelectedModel(null)}><X size={19} /></button></div><div className="viewer-canvas">{selectedModelUrl ? <Canvas camera={{ position: [3.8, 2.5, 4.8], fov: 42 }}><color attach="background" args={['#e8e0d4']} /><ModelViewer url={selectedModelUrl} /></Canvas> : <div className="viewer-loading" role="status">carregando modelo...</div>}</div><div className="viewer-footer"><span>órbita · zoom · enquadramento automático · esc para fechar</span><span>{formatBytes(selectedModel.sizeBytes)}</span></div></div></div>}
-          <section className="scene-section"><div className="section-label"><span>Prateleira de exposição</span><span className="muted-label">cena · {sceneInstances.length} itens <button className="reset-scene" onClick={() => void resetScene()}>limpar</button></span></div><div className="scene-frame"><Canvas camera={{ position: [8.5, 4.5, 9], fov: 38 }}><color attach="background" args={['#e8e0d4']} /><ShelfScene instances={sceneInstances.filter((instance) => sceneUrls[instance.id]).map((instance) => ({ ...instance, url: sceneUrls[instance.id] }))} /></Canvas><div className="scene-caption"><span>cena conjunta</span><span>arraste para explorar</span></div></div><div className="scene-instance-list">{sceneInstances.map((instance) => <button key={instance.id} onClick={() => void removeFromScene(instance.id)}>remover · {models.find((model) => model.id === instance.modelId)?.name ?? 'modelo'}</button>)}</div></section>
+          {activeShelfId !== 'all' && <section className="scene-section"><div className="section-label"><span>Prateleira de exposição</span><span className="muted-label">cena · {arrangedSceneInstances.length} itens <button className="reset-scene" onClick={() => void resetScene()}>limpar</button></span></div><div className="scene-frame"><Canvas camera={{ position: [8.5, 4.5, 9], fov: 38 }}><color attach="background" args={['#e8e0d4']} /><ShelfScene itemsPerLevel={activeShelfItemsPerLevel} instances={arrangedSceneInstances.filter((instance) => sceneUrls[instance.id]).map((instance) => ({ ...instance, url: sceneUrls[instance.id] }))} /></Canvas><div className="scene-caption"><span>cena conjunta</span><span>arraste para explorar</span></div></div><div className="scene-instance-list">{arrangedSceneInstances.map((instance) => <button key={instance.id} onClick={() => void removeFromScene(instance.id)}>remover · {models.find((model) => model.id === instance.modelId)?.name ?? 'modelo'}</button>)}</div></section>}
         </section>
       </div>
       {shelfDialog && <div className="dialog-backdrop" role="presentation"><form className="name-dialog" onSubmit={(event) => { event.preventDefault(); void saveShelf() }}><span className="eyebrow">biblioteca</span><h2>{shelfDialog.mode === 'create' ? 'Nova prateleira' : 'Renomear prateleira'}</h2><input autoFocus value={shelfName} onChange={(event) => setShelfName(event.target.value)} aria-label="Nome da prateleira" /><div className="dialog-actions"><button type="button" onClick={() => setShelfDialog(null)}>cancelar</button><button className="dialog-submit" type="submit">salvar</button></div></form></div>}
@@ -299,4 +353,9 @@ export function App() {
 function formatBytes(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function clampItemsPerLevel(value: number) {
+  if (!Number.isFinite(value)) return SHELF_ITEMS_PER_LEVEL
+  return Math.min(MAX_ITEMS_PER_LEVEL, Math.max(MIN_ITEMS_PER_LEVEL, Math.round(value)))
 }

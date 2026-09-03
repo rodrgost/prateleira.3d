@@ -5,7 +5,7 @@ export interface ModelAsset {
   name: string
   format: ModelFormat
   sizeBytes: number
-  shelfId: string
+  shelfId?: string
   tags: string[]
   createdAt: string
   thumbnailUrl?: string
@@ -15,6 +15,7 @@ export interface Shelf {
   id: string
   name: string
   modelIds: string[]
+  itemsPerLevel?: number
   createdAt: string
 }
 
