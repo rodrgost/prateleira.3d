@@ -3,9 +3,9 @@ import type { SceneInstance } from './types'
 export const SHELF_ITEMS_PER_LEVEL = 4
 
 const SHELF_ITEM_SPACING = 1.7
-const SHELF_BOTTOM_LEVEL_Y = -1.25
+const SHELF_BOTTOM_LEVEL_Y = -1.35
 export const SHELF_LEVEL_HEIGHT = 1.75
-export const SHELF_ITEM_Z = 0.1
+export const SHELF_ITEM_Z = 0.3
 
 export function getShelfLevelCount(itemCount: number, itemsPerLevel = SHELF_ITEMS_PER_LEVEL) {
   if (itemCount === 0) return 1
