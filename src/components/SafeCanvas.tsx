@@ -1,5 +1,5 @@
 import { Canvas } from '@react-three/fiber'
-import { Component, type ComponentProps, type CSSProperties, type ReactNode, useCallback, useState } from 'react'
+import { Component, type ComponentProps, type CSSProperties, type ReactNode, useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, RefreshCcw } from 'lucide-react'
 
 interface WebGLErrorBoundaryProps {
@@ -59,7 +59,7 @@ class WebGLErrorBoundary extends Component<WebGLErrorBoundaryProps, WebGLErrorBo
           </div>
           <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Instabilidade na GPU do Dispositivo</h4>
           <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8', maxWidth: '340px', lineHeight: '1.5' }}>
-            A renderização 3D foi interrompida pelo sistema operacional ou pelo navegador.
+            A renderização 3D foi interrompida pelo sistema operacional ou navegador.
           </p>
           <button
             type="button"
@@ -114,19 +114,30 @@ export function SafeCanvas({
     setKey((prev) => prev + 1)
   }, [])
 
+  // Auto-recovery timer when WebGL context is lost on Android/mobile
+  useEffect(() => {
+    if (!isContextLost) return
+    const timer = setTimeout(() => {
+      console.log('SafeCanvas: Auto-recovering lost WebGL context...')
+      handleReset()
+    }, 900)
+    return () => clearTimeout(timer)
+  }, [isContextLost, handleReset])
+
   // Optimized GL config for mobile Android devices & GPUs
   const defaultGlConfig = {
     antialias: true,
     alpha: false,
-    preserveDrawingBuffer: false, // Don't hold drawing buffers in GPU RAM after render
-    powerPreference: 'high-performance' as const,
+    preserveDrawingBuffer: false,
+    powerPreference: 'default' as const, // Safe power preference to prevent OS context revocation on Android
     failIfMajorPerformanceCaveat: false,
   }
 
   const mergedGl = typeof gl === 'object' && gl !== null ? { ...defaultGlConfig, ...gl } : defaultGlConfig
 
-  // Cap max DPR to 1.75 on mobile phones to prevent high-DPI (3x/3.5x) GPU OOM crashes
-  const maxDpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 1.75) : 1.5
+  // Cap DPR strictly on touch / mobile devices (1.25x max) to protect mobile GPUs (Adreno / Mali) from OOM
+  const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0)
+  const maxDpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, isMobile ? 1.25 : 1.75) : 1.25
   const safeDpr = dpr || [1, maxDpr]
 
   return (
@@ -168,7 +179,7 @@ export function SafeCanvas({
             >
               <AlertTriangle size={30} color="#f59e0b" />
             </div>
-            <span style={{ fontSize: '14px', fontWeight: 600 }}>Conexão 3D (WebGL) perdida. Restaurando...</span>
+            <span style={{ fontSize: '14px', fontWeight: 600 }}>Restaurando acelerador gráfico 3D...</span>
             <button
               type="button"
               onClick={handleReset}
@@ -202,9 +213,8 @@ export function SafeCanvas({
             const canvasEl = renderer?.domElement
             if (canvasEl) {
               const onContextLost = (e: Event) => {
-                // MANDATORY: Call preventDefault() to allow Android Chrome/WebView to restore WebGL context
                 e.preventDefault()
-                console.warn('SafeCanvas: WebGL Context Lost event caught and handled.')
+                console.warn('SafeCanvas: WebGL Context Lost event caught.')
                 setIsContextLost(true)
               }
 

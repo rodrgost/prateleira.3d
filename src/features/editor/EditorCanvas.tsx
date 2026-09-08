@@ -263,7 +263,7 @@ function EditorSceneContent({
           fadeStrength={1}
           infiniteGrid
         />
-        <ContactShadows opacity={0.65} scale={25} blur={2.5} far={5} resolution={512} color="#000000" />
+        <ContactShadows opacity={0.65} scale={25} blur={2.5} far={5} resolution={256} frames={1} color="#000000" />
       </group>
 
       {/* Main Scene Root Group */}

@@ -118,12 +118,16 @@ function GroundRenderer({
   groundType,
   groundColor = '#4f627d',
   bottomY = -1.1,
+  autoRotate = false,
 }: {
   groundType: GroundType
   groundColor?: string
   bottomY: number
+  autoRotate?: boolean
 }) {
   if (groundType === 'none') return null
+
+  const shadowFrames = autoRotate ? Infinity : 1
 
   switch (groundType) {
     case 'pedestal':
@@ -141,7 +145,7 @@ function GroundRenderer({
             <ringGeometry args={[2.14, 2.2, 48]} />
             <meshStandardMaterial color="#ffffff" opacity={0.6} transparent roughness={0.1} metalness={0.8} />
           </mesh>
-          <ContactShadows position={[0, -0.09, 0]} opacity={0.8} scale={7} blur={2.0} far={2.5} resolution={512} />
+          <ContactShadows position={[0, -0.09, 0]} opacity={0.8} scale={7} blur={2.0} far={2.5} resolution={256} frames={shadowFrames} />
         </group>
       )
 
@@ -154,7 +158,8 @@ function GroundRenderer({
           scale={9}
           blur={1.8}
           far={3.5}
-          resolution={512}
+          resolution={256}
+          frames={shadowFrames}
           color={groundColor === '#4f627d' ? '#000000' : groundColor}
         />
       )
@@ -421,7 +426,7 @@ export function ModelViewer({
         </Suspense>
       </ViewerErrorBoundary>
 
-      {showGround && <GroundRenderer groundType={groundType} groundColor={groundColor} bottomY={bottomY} />}
+      {showGround && <GroundRenderer groundType={groundType} groundColor={groundColor} bottomY={bottomY} autoRotate={autoRotate} />}
 
       <CameraDirector
         cameraSignal={cameraSignal}
