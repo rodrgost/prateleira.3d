@@ -1,6 +1,5 @@
 import {
   AlertCircle,
-  Check,
   CheckCircle2,
   Cloud,
   CloudDownload,
@@ -8,7 +7,6 @@ import {
   ExternalLink,
   Folder,
   HelpCircle,
-  Key,
   LogOut,
   RefreshCw,
   Sparkles,
@@ -24,7 +22,6 @@ import {
   getStoredLastBackup,
   getStoredUser,
   restoreAllDataFromDrive,
-  saveStoredClientId,
 } from './googleDriveService'
 import type { GDriveSyncProgress, GDriveUser } from './types'
 
@@ -35,8 +32,7 @@ interface GoogleDriveTabProps {
 }
 
 export function GoogleDriveTab({ globalSettings, shelves, onDataRestored }: GoogleDriveTabProps) {
-  const [clientId, setClientId] = useState(() => getStoredClientId())
-  const [isEditingClientId, setIsEditingClientId] = useState(false)
+  const clientId = getStoredClientId()
   const [user, setUser] = useState<GDriveUser | null>(() => getStoredUser())
   const [lastBackup, setLastBackup] = useState<string | null>(() => getStoredLastBackup())
   const [folderId, setFolderId] = useState<string | null>(() => getStoredFolderId())
@@ -52,15 +48,12 @@ export function GoogleDriveTab({ globalSettings, shelves, onDataRestored }: Goog
     setFolderId(getStoredFolderId())
   }, [])
 
-  const handleSaveClientId = () => {
-    saveStoredClientId(clientId)
-    setIsEditingClientId(false)
-    setStatusMessage({ type: 'info', text: 'Client ID salvo com sucesso.' })
-  }
-
   const handleConnect = async (forceConsent: boolean = true) => {
     if (!clientId.trim()) {
-      setStatusMessage({ type: 'error', text: 'Informe um Google Client ID válido antes de conectar.' })
+      setStatusMessage({
+        type: 'error',
+        text: 'A variável de ambiente VITE_GOOGLE_CLIENT_ID não está configurada.',
+      })
       return
     }
     setIsProcessing(true)
@@ -86,7 +79,10 @@ export function GoogleDriveTab({ globalSettings, shelves, onDataRestored }: Goog
 
   const handleBackup = async () => {
     if (!clientId.trim()) {
-      setStatusMessage({ type: 'error', text: 'Configure seu Google Client ID para realizar o backup.' })
+      setStatusMessage({
+        type: 'error',
+        text: 'Configure a variável VITE_GOOGLE_CLIENT_ID para realizar o backup.',
+      })
       return
     }
     setIsProcessing(true)
@@ -129,7 +125,10 @@ export function GoogleDriveTab({ globalSettings, shelves, onDataRestored }: Goog
 
   const handleRestore = async () => {
     if (!clientId.trim()) {
-      setStatusMessage({ type: 'error', text: 'Configure seu Google Client ID para restaurar do Google Drive.' })
+      setStatusMessage({
+        type: 'error',
+        text: 'Configure a variável VITE_GOOGLE_CLIENT_ID para restaurar do Google Drive.',
+      })
       return
     }
     if (!window.confirm('Deseja restaurar os modelos e configurações do Google Drive? Os dados locais serão sincronizados com a nuvem.')) {
@@ -172,6 +171,19 @@ export function GoogleDriveTab({ globalSettings, shelves, onDataRestored }: Goog
       <p className="settings-tab-desc">
         Sincronize seus modelos 3D (.glb/.gltf), capas e preferências diretamente em uma pasta dedicada <strong>Prateleira 3D</strong> no seu Google Drive.
       </p>
+
+      {/* Missing Env Variable Alert */}
+      {!clientId && (
+        <div className="gdrive-alert-banner error" style={{ marginBottom: '16px' }}>
+          <AlertCircle size={16} />
+          <div style={{ flex: 1 }}>
+            <strong>Variável de ambiente VITE_GOOGLE_CLIENT_ID não configurada</strong>
+            <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem' }}>
+              Para habilitar a integração com o Google Drive, adicione <code>VITE_GOOGLE_CLIENT_ID=seu_client_id</code> no arquivo <code>.env</code> ou nas variáveis de ambiente do Railway.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* 1. Account / Connection Status Card */}
       <div className="gdrive-status-card">
@@ -252,83 +264,49 @@ export function GoogleDriveTab({ globalSettings, shelves, onDataRestored }: Goog
         </div>
       </div>
 
-      {/* 2. Client ID Configuration */}
-      <div className="settings-section">
-        <div className="settings-header-toggle">
-          <label className="section-title">
-            <Key size={15} />
-            <span>Google OAuth 2.0 Client ID</span>
-          </label>
-          <button
-            type="button"
-            className="gdrive-help-toggle"
-            onClick={() => setShowHelp(!showHelp)}
-            title="Como obter um Client ID gratuito"
-          >
-            <HelpCircle size={14} />
-            <span>{showHelp ? 'Ocultar ajuda' : 'Como obter Client ID?'}</span>
-          </button>
-        </div>
-
-        <div className="gdrive-input-row">
-          <input
-            type="text"
-            className="gdrive-text-input"
-            placeholder="Ex: 123456789-abcdefghijk.apps.googleusercontent.com"
-            value={clientId}
-            onChange={(e) => {
-              setClientId(e.target.value)
-              setIsEditingClientId(true)
-            }}
-          />
-          {isEditingClientId && (
-            <button
-              type="button"
-              className="action-outline-btn"
-              onClick={handleSaveClientId}
-              title="Salvar Client ID"
-            >
-              <Check size={14} />
-              <span>Salvar</span>
-            </button>
-          )}
-        </div>
-
-        {/* Tutorial / Help Box */}
-        {showHelp && (
-          <div className="gdrive-help-box">
-            <h4>Como configurar seu Google OAuth Client ID corretamente:</h4>
-            <ol>
-              <li>
-                Acesse o <strong>Google Cloud Console</strong> (<a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer">console.cloud.google.com</a>) e crie ou selecione seu projeto.
-              </li>
-              <li>
-                No menu lateral, vá em <strong>APIs e Serviços</strong> &gt; <strong>Biblioteca</strong>, procure por <strong>Google Drive API</strong> e clique em <strong>Ativar</strong>.
-              </li>
-              <li>
-                Vá em <strong>Tela de consentimento OAuth</strong>:
-                <ul>
-                  <li>Adicione seu e-mail na lista de <strong>Usuários de teste</strong> (Test users).</li>
-                  <li>Em <strong>Escopos</strong>, clique em <em>Adicionar ou remover escopos</em> e marque <code>.../auth/drive.file</code>.</li>
-                </ul>
-              </li>
-              <li>
-                Em <strong>Credenciais</strong>, clique em <strong>Criar Credenciais</strong> &gt; <strong>ID do cliente OAuth</strong> &gt; selecione <strong>Aplicativo da Web</strong>.
-              </li>
-              <li>
-                Em <strong>Origens JavaScript autorizadas</strong>, adicione:
-                <code>{typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173'}</code>
-              </li>
-              <li>
-                Copie o <strong>ID do cliente</strong> gerado, cole no campo acima e clique em <strong>Salvar</strong>!
-              </li>
-              <li>
-                ⚠️ <strong>Atenção ao fazer login:</strong> Na janela do Google, você <strong>DEVE marcar a caixinha</strong> de permissão para criar e editar arquivos no Google Drive.
-              </li>
-            </ol>
-          </div>
-        )}
+      {/* Instructions / Help Button */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+        <button
+          type="button"
+          className="gdrive-help-toggle"
+          onClick={() => setShowHelp(!showHelp)}
+          title="Como obter um Client ID no Google Cloud Console"
+        >
+          <HelpCircle size={14} />
+          <span>{showHelp ? 'Ocultar instruções de configuração' : 'Instruções para obter o Client ID'}</span>
+        </button>
       </div>
+
+      {/* Tutorial / Help Box */}
+      {showHelp && (
+        <div className="gdrive-help-box" style={{ marginBottom: '16px' }}>
+          <h4>Como configurar seu Google OAuth Client ID nas Variáveis de Ambiente:</h4>
+          <ol>
+            <li>
+              Acesse o <strong>Google Cloud Console</strong> (<a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer">console.cloud.google.com</a>) e crie ou selecione seu projeto.
+            </li>
+            <li>
+              No menu lateral, vá em <strong>APIs e Serviços</strong> &gt; <strong>Biblioteca</strong>, procure por <strong>Google Drive API</strong> e clique em <strong>Ativar</strong>.
+            </li>
+            <li>
+              Vá em <strong>Tela de consentimento OAuth</strong>:
+              <ul>
+                <li>Adicione seu e-mail na lista de <strong>Usuários de teste</strong> (Test users).</li>
+                <li>Em <strong>Escopos</strong>, clique em <em>Adicionar ou remover escopos</em> e marque <code>.../auth/drive.file</code>.</li>
+              </ul>
+            </li>
+            <li>
+              Em <strong>Credenciais</strong>, clique em <strong>Criar Credenciais</strong> &gt; <strong>ID do cliente OAuth</strong> &gt; selecione <strong>Aplicativo da Web</strong>.
+            </li>
+            <li>
+              Em <strong>Origens JavaScript autorizadas</strong>, adicione a URL da aplicação (ex: <code>http://localhost:5173</code> ou a URL do Railway).
+            </li>
+            <li>
+              Copie o <strong>ID do cliente</strong> gerado e defina na variável de ambiente <code>VITE_GOOGLE_CLIENT_ID</code> no arquivo <code>.env</code> ou no painel do Railway.
+            </li>
+          </ol>
+        </div>
+      )}
 
       {/* 3. Progress Bar & Realtime Feedback */}
       {isProcessing && progress && (

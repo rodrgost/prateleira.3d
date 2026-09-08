@@ -64,12 +64,13 @@ export function loadGoogleScript(): Promise<void> {
  * Client ID getters and setters
  */
 export function getStoredClientId(): string {
+  // Check Vite env variable first
+  const envVal = (import.meta as unknown as { env?: { VITE_GOOGLE_CLIENT_ID?: string } })?.env?.VITE_GOOGLE_CLIENT_ID
+  if (envVal?.trim()) return envVal.trim()
+
   if (typeof window === 'undefined') return ''
   const saved = localStorage.getItem(STORAGE_CLIENT_ID_KEY)?.trim()
-  if (saved) return saved
-  // Vite env fallback if defined
-  const envVal = (import.meta as unknown as { env?: { VITE_GOOGLE_CLIENT_ID?: string } })?.env?.VITE_GOOGLE_CLIENT_ID
-  return envVal?.trim() || ''
+  return saved || ''
 }
 
 export function saveStoredClientId(clientId: string): void {
@@ -161,7 +162,7 @@ export async function authenticateGoogle(
 ): Promise<{ token: string; user: GDriveUser }> {
   const clientId = clientIdOverride?.trim() || getStoredClientId()
   if (!clientId) {
-    throw new Error('Google Client ID não configurado. Adicione seu Client ID nas configurações.')
+    throw new Error('Google Client ID não configurado. Defina a variável de ambiente VITE_GOOGLE_CLIENT_ID.')
   }
 
   await loadGoogleScript()
