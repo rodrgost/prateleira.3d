@@ -9,8 +9,7 @@ A interface permite:
 - importar arquivos GLB e glTF para a biblioteca;
 - organizar modelos em prateleiras personalizadas;
 - adicionar tags aos itens para facilitar a busca;
-- visualizar um modelo em 3D em um modal de inspeção;
-- montar uma cena combinando vários modelos em uma prateleira de exposição;
+- visualizar e inspecionar modelos individualmente em 3D em um modal interativo;
 - persistir os dados localmente no navegador com IndexedDB.
 
 ## Tecnologias
@@ -33,9 +32,8 @@ src/
     fileValidation.ts
     formats.ts
     types.ts
+    thumbnail.ts
   features/
-    shelf-scene/
-      ShelfScene.tsx
     viewer/
       ModelViewer.tsx
   storage/
@@ -82,12 +80,11 @@ npm run build
 - organização por prateleiras;
 - busca por nome ou tag.
 
-### Cena 3D
+### Visualizador 3D
 
-- adição de modelos à cena de exposição;
-- navegação com orbit controls;
-- remoção rápida de itens da cena;
-- limpeza total da cena.
+- visualização e inspeção 3D individual via modal;
+- navegação com orbit controls (rotação e zoom);
+- enquadramento automático e iluminação configurada.
 
 ### Persistência local
 
