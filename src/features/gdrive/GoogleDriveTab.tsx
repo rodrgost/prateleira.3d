@@ -214,7 +214,7 @@ export function GoogleDriveTab({ globalSettings, shelves, onDataRestored }: Goog
               <button
                 type="button"
                 className="gdrive-btn-primary"
-                onClick={handleConnect}
+                onClick={() => handleConnect()}
                 disabled={isProcessing || !clientId.trim()}
               >
                 <Cloud size={16} />
