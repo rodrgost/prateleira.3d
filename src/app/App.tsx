@@ -749,6 +749,8 @@ export function App() {
             type="button"
             className={`topbar-nav-tab ${activePage === 'library' ? 'active' : ''}`}
             onClick={() => setActivePage('library')}
+            title="Biblioteca"
+            aria-label="Biblioteca"
           >
             <Library size={16} />
             <span>Biblioteca</span>
@@ -757,6 +759,8 @@ export function App() {
             type="button"
             className={`topbar-nav-tab ${activePage === 'editor' ? 'active' : ''}`}
             onClick={() => setActivePage('editor')}
+            title="Editor 3D"
+            aria-label="Editor 3D"
           >
             <Box size={16} />
             <span>Editor 3D</span>

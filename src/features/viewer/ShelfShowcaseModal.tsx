@@ -224,11 +224,6 @@ export function ShelfShowcaseModal({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [onClose, handleNext, handlePrev, isPlaying, progress, durationMs])
 
-  const formatBytes = (bytes: number) => {
-    if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
-
   const bgColor = viewerSettings.backgroundColor || '#111215'
 
   return (
@@ -256,10 +251,8 @@ export function ShelfShowcaseModal({
           {currentModel && (
             <div className="showcase-model-info">
               <h1 className="showcase-model-name">{currentModel.name}</h1>
-              <div className="showcase-model-meta">
-                <span className="showcase-format-badge">{currentModel.format.toUpperCase()}</span>
-                <span>{formatBytes(currentModel.sizeBytes)}</span>
-                {currentModel.tags.length > 0 && (
+              {currentModel.tags.length > 0 && (
+                <div className="showcase-model-meta">
                   <span className="showcase-tag-list">
                     {currentModel.tags.map((tag) => (
                       <span key={tag} className="showcase-tag">
@@ -267,8 +260,8 @@ export function ShelfShowcaseModal({
                       </span>
                     ))}
                   </span>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
         </div>

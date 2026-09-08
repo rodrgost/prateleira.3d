@@ -126,37 +126,6 @@ function GroundRenderer({
   if (groundType === 'none') return null
 
   switch (groundType) {
-    case 'grid':
-      return (
-        <group position={[0, bottomY, 0]}>
-          <Grid
-            args={[18, 18]}
-            cellSize={0.4}
-            cellThickness={0.8}
-            cellColor={groundColor}
-            sectionSize={1.6}
-            sectionThickness={1.4}
-            sectionColor={groundColor}
-            fadeDistance={24}
-            fadeStrength={1.5}
-            infiniteGrid
-          />
-          <ContactShadows opacity={0.45} scale={10} blur={1.5} far={3.5} color={groundColor} />
-        </group>
-      )
-
-    case 'shadow':
-      return (
-        <ContactShadows
-          position={[0, bottomY, 0]}
-          opacity={0.75}
-          scale={9}
-          blur={1.8}
-          far={3.5}
-          color={groundColor === '#4f627d' ? '#000000' : groundColor}
-        />
-      )
-
     case 'pedestal':
       return (
         <group position={[0, bottomY - 0.08, 0]}>
@@ -176,53 +145,18 @@ function GroundRenderer({
         </group>
       )
 
-    case 'checker':
-      return (
-        <group position={[0, bottomY, 0]}>
-          <Grid
-            args={[16, 16]}
-            cellSize={0.6}
-            cellThickness={1.5}
-            cellColor={groundColor}
-            sectionSize={1.2}
-            sectionThickness={2.0}
-            sectionColor="#ffffff"
-            fadeDistance={20}
-            fadeStrength={1.2}
-          />
-          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.005, 0]} receiveShadow>
-            <planeGeometry args={[16, 16]} />
-            <meshStandardMaterial
-              color={groundColor}
-              roughness={0.8}
-              opacity={0.18}
-              transparent
-              side={DoubleSide}
-            />
-          </mesh>
-          <ContactShadows opacity={0.5} scale={9} blur={1.5} far={3} />
-        </group>
-      )
-
-    case 'radial':
-      return (
-        <group position={[0, bottomY, 0]}>
-          {[0.8, 1.4, 2.0, 2.6, 3.2, 4.0].map((radius, i) => (
-            <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.002, 0]}>
-              <ringGeometry args={[radius - 0.015, radius + 0.015, 64]} />
-              <meshBasicMaterial color={groundColor} opacity={0.7 - i * 0.09} transparent />
-            </mesh>
-          ))}
-          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
-            <circleGeometry args={[4.2, 64]} />
-            <meshStandardMaterial color={groundColor} opacity={0.12} transparent roughness={0.5} />
-          </mesh>
-          <ContactShadows opacity={0.6} scale={8} blur={1.8} far={3} color={groundColor} />
-        </group>
-      )
-
+    case 'shadow':
     default:
-      return null
+      return (
+        <ContactShadows
+          position={[0, bottomY, 0]}
+          opacity={0.75}
+          scale={9}
+          blur={1.8}
+          far={3.5}
+          color={groundColor === '#4f627d' ? '#000000' : groundColor}
+        />
+      )
   }
 }
 
@@ -464,7 +398,7 @@ function CameraDirector({
 export function ModelViewer({
   url,
   showGround = true,
-  groundType = 'grid',
+  groundType = 'shadow',
   groundColor = '#4f627d',
   autoRotate = false,
   autoRotateSpeed = 2.0,

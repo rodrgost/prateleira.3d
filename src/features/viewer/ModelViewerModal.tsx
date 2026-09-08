@@ -3,6 +3,7 @@ import {
   ArrowDown,
   ArrowUp,
   Box,
+  ChevronLeft,
   Compass,
   Crosshair,
   Eye,
@@ -13,9 +14,12 @@ import {
   Minus,
   Move,
   Orbit,
+  Pin,
+  PinOff,
   Plus,
   RefreshCcw,
   RotateCw,
+  SlidersHorizontal,
   Sun,
   X,
 } from 'lucide-react'
@@ -46,9 +50,13 @@ export function ModelViewerModal({
   onClose,
   onRotateModel,
 }: ModelViewerModalProps) {
+  // Retractable Sidebar state
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false)
+  const [isSidebarPinned, setIsSidebarPinned] = useState<boolean>(false)
+
   // Local active view settings for real-time adjustments inside the modal
   const [lighting, setLighting] = useState<LightingPreset>(initialSettings.lighting || 'studio')
-  const [groundType, setGroundType] = useState<GroundType>(initialSettings.groundType || 'grid')
+  const [groundType, setGroundType] = useState<GroundType>(initialSettings.groundType || 'shadow')
   const [showGround, setShowGround] = useState<boolean>(initialSettings.showGround ?? true)
   const [groundColor, setGroundColor] = useState<string>(initialSettings.groundColor || '#4f627d')
   const [autoRotate, setAutoRotate] = useState<boolean>(initialSettings.autoRotate ?? false)
@@ -129,24 +137,22 @@ export function ModelViewerModal({
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
   }, [])
 
-  // Keyboard navigation shortcuts
+  // Hotkeys
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't intercept if user is typing in an input
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) return
 
       if (e.key === 'Escape') {
-        // If pointer is locked in FPS mode, exiting pointer lock is handled by the browser.
-        // We only close the modal if pointer is NOT locked.
-        if (document.pointerLockElement) {
+        if (isSidebarOpen && !isSidebarPinned) {
+          setIsSidebarOpen(false)
           return
         }
         onClose()
-      } else if (e.key === 'r' || e.key === 'R') {
-        handleResetCamera()
       } else if (e.key === 'f' || e.key === 'F') {
         handleFocusCenter()
-      } else if (e.key === ' ' && !e.repeat && controlMode !== 'fps') {
+      } else if (e.key === 'r' || e.key === 'R') {
+        handleResetCamera()
+      } else if (e.key === ' ') {
         e.preventDefault()
         setAutoRotate((prev) => !prev)
       } else if (e.key === '+' || e.key === '=') {
@@ -164,7 +170,7 @@ export function ModelViewerModal({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose, triggerCameraAction, controlMode])
+  }, [onClose, triggerCameraAction, controlMode, isSidebarOpen, isSidebarPinned])
 
   const formatBytes = (bytes: number) => {
     if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
@@ -181,24 +187,19 @@ export function ModelViewerModal({
       {/* Top Header Bar */}
       <header className="viewer-fs-header">
         <div className="viewer-fs-title-group">
-          <div className="viewer-fs-badge-format">{model.format.toUpperCase()}</div>
           <div className="viewer-fs-info">
             <h2>{model.name}</h2>
-            <div className="viewer-fs-meta">
-              <span>{formatBytes(model.sizeBytes)}</span>
-              {model.tags.length > 0 && (
-                <>
-                  <span className="dot-sep">•</span>
-                  <span className="viewer-fs-tags">
-                    {model.tags.map((t) => (
-                      <span key={t} className="viewer-fs-tag">
-                        #{t}
-                      </span>
-                    ))}
-                  </span>
-                </>
-              )}
-            </div>
+            {model.tags.length > 0 && (
+              <div className="viewer-fs-meta">
+                <span className="viewer-fs-tags">
+                  {model.tags.map((t) => (
+                    <span key={t} className="viewer-fs-tag">
+                      #{t}
+                    </span>
+                  ))}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -221,6 +222,19 @@ export function ModelViewerModal({
               />
             ))}
           </div>
+
+          {/* Toggle 3D Control Sidebar Button */}
+          <button
+            type="button"
+            className={`viewer-controls-toggle-btn ${isSidebarOpen || isSidebarPinned ? 'active' : ''}`}
+            onClick={() => {
+              setIsSidebarOpen((prev) => !prev)
+            }}
+            title={isSidebarOpen ? 'Ocultar Controles 3D' : 'Exibir Controles 3D'}
+          >
+            <SlidersHorizontal size={15} />
+            <span>Controles 3D</span>
+          </button>
 
           <button
             type="button"
@@ -300,284 +314,292 @@ export function ModelViewerModal({
           </div>
         )}
 
-        {/* Floating Left/Center HUD: Camera Controls & View Angles */}
-        <aside className="viewer-hud-left" aria-label="Controles de Câmera e Foco">
-          {/* Mode Switcher: Orbit vs Pan vs FPS */}
-          <div className="viewer-hud-group">
-            <span className="viewer-hud-label">Modo da Câmera</span>
-            <div className="viewer-hud-row">
-              <button
-                type="button"
-                className={`viewer-hud-btn ${controlMode === 'orbit' ? 'active' : ''}`}
-                onClick={() => setControlMode('orbit')}
-                title="Modo Girar: Arraste com botão esquerdo para orbitar a câmera"
-              >
-                <Orbit size={14} />
-                <span>Girar</span>
-              </button>
-              <button
-                type="button"
-                className={`viewer-hud-btn ${controlMode === 'pan' ? 'active' : ''}`}
-                onClick={() => setControlMode('pan')}
-                title="Modo Mover: Arraste com botão esquerdo para deslocar o ponto de foco"
-              >
-                <Move size={14} />
-                <span>Mover</span>
-              </button>
-              <button
-                type="button"
-                className={`viewer-hud-btn ${controlMode === 'fps' ? 'active' : ''}`}
-                onClick={() => setControlMode('fps')}
-                title="Modo 1ª Pessoa (FPS): Navegue livremente pelo ambiente com WASD e Mouse"
-              >
-                <Eye size={14} />
-                <span>FPS</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Camera Angles / Presets */}
-          <div className="viewer-hud-group">
-            <span className="viewer-hud-label">Ângulo de Visão</span>
-            <div className="viewer-hud-grid">
-              <button
-                type="button"
-                className={`viewer-hud-mini-btn ${activeAnglePreset === 'iso' ? 'active' : ''}`}
-                onClick={() => setAnglePreset('iso')}
-                title="Visão Isométrica 3D"
-              >
-                3D
-              </button>
-              <button
-                type="button"
-                className={`viewer-hud-mini-btn ${activeAnglePreset === 'front' ? 'active' : ''}`}
-                onClick={() => setAnglePreset('front')}
-                title="Visão Frontal"
-              >
-                Frente
-              </button>
-              <button
-                type="button"
-                className={`viewer-hud-mini-btn ${activeAnglePreset === 'top' ? 'active' : ''}`}
-                onClick={() => setAnglePreset('top')}
-                title="Visão Superior (Topo)"
-              >
-                Topo
-              </button>
-              <button
-                type="button"
-                className={`viewer-hud-mini-btn ${activeAnglePreset === 'left' ? 'active' : ''}`}
-                onClick={() => setAnglePreset('left')}
-                title="Visão Lateral Esquerda"
-              >
-                Esq.
-              </button>
-              <button
-                type="button"
-                className={`viewer-hud-mini-btn ${activeAnglePreset === 'right' ? 'active' : ''}`}
-                onClick={() => setAnglePreset('right')}
-                title="Visão Lateral Direita"
-              >
-                Dir.
-              </button>
-              <button
-                type="button"
-                className={`viewer-hud-mini-btn ${activeAnglePreset === 'back' ? 'active' : ''}`}
-                onClick={() => setAnglePreset('back')}
-                title="Visão Traseira"
-              >
-                Trás
-              </button>
-            </div>
-          </div>
-
-          {/* Zoom Point / Target Center */}
-          <div className="viewer-hud-group">
-            <span className="viewer-hud-label">Ponto de Foco (Zoom Target)</span>
-            <div className="viewer-hud-row">
-              <button
-                type="button"
-                className="viewer-hud-btn"
-                onClick={handleFocusCenter}
-                title="Centralizar ponto de rotação e zoom no centro do modelo [F]"
-              >
-                <Crosshair size={14} />
-                <span>Centro</span>
-              </button>
-              <button
-                type="button"
-                className="viewer-hud-icon-btn"
-                onClick={handleFocusTop}
-                title="Focar ponto de zoom na parte superior do modelo"
-              >
-                <ArrowUp size={14} />
-              </button>
-              <button
-                type="button"
-                className="viewer-hud-icon-btn"
-                onClick={handleFocusBottom}
-                title="Focar ponto de zoom na base do modelo"
-              >
-                <ArrowDown size={14} />
-              </button>
-            </div>
-          </div>
-
-          {/* Zoom Controls & Reset */}
-          <div className="viewer-hud-group">
-            <span className="viewer-hud-label">Zoom & Enquadramento</span>
-            <div className="viewer-hud-row">
-              <button
-                type="button"
-                className="viewer-hud-icon-btn"
-                onClick={() => triggerCameraAction('zoomIn')}
-                title="Aproximar zoom (+) [Micro-zoom disponível até 0.02]"
-              >
-                <Plus size={16} />
-              </button>
-              <button
-                type="button"
-                className="viewer-hud-icon-btn"
-                onClick={() => triggerCameraAction('zoomOut')}
-                title="Afastar zoom (-)"
-              >
-                <Minus size={16} />
-              </button>
-              <button
-                type="button"
-                className="viewer-hud-btn"
-                onClick={handleResetCamera}
-                title="Resetar câmera para enquadramento inicial [R]"
-              >
-                <RefreshCcw size={13} />
-                <span>Resetar</span>
-              </button>
-            </div>
-          </div>
-        </aside>
-
-        {/* Floating Right HUD: Rendering & Environment Settings */}
-        <aside className="viewer-hud-right" aria-label="Ajustes de Ambiente e Efeitos">
-          {/* Auto-rotation & Wireframe toggles */}
-          <div className="viewer-hud-group">
-            <span className="viewer-hud-label">Animação & Exibição</span>
-            <div className="viewer-hud-row">
-              <button
-                type="button"
-                className={`viewer-hud-btn ${autoRotate ? 'active' : ''}`}
-                onClick={() => setAutoRotate((prev) => !prev)}
-                title="Girar o modelo 3D continuamente em 360° [Espaço]"
-              >
-                <RotateCw size={14} className={autoRotate ? 'spin' : ''} />
-                <span>Auto-Giro</span>
-              </button>
-              {onRotateModel && (
+        {/* Retractable Control Sidebar */}
+        <aside
+          className={`viewer-sidebar-container ${isSidebarOpen || isSidebarPinned ? 'open' : ''}`}
+          aria-label="Painel Lateral de Controles 3D"
+        >
+          {/* Collapsible Panel Content */}
+          <div className="viewer-sidebar-panel">
+            {/* Header */}
+            <div className="viewer-sidebar-header">
+              <div className="viewer-sidebar-title">
+                <SlidersHorizontal size={16} />
+                <span>Controles 3D</span>
+              </div>
+              <div className="viewer-sidebar-header-actions">
                 <button
                   type="button"
-                  className="viewer-hud-btn"
-                  onClick={() => void onRotateModel(-90)}
-                  title="Girar modelo em 90° e atualizar miniatura padrão"
+                  className={`viewer-sidebar-pin-btn ${isSidebarPinned ? 'active' : ''}`}
+                  onClick={() => setIsSidebarPinned((prev) => !prev)}
+                  title={isSidebarPinned ? 'Desfixar barra lateral' : 'Fixar barra lateral aberta'}
                 >
-                  <RotateCw size={14} />
-                  <span>Girar 90°</span>
+                  {isSidebarPinned ? <PinOff size={14} /> : <Pin size={14} />}
+                  <span>{isSidebarPinned ? 'Fixado' : 'Fixar'}</span>
                 </button>
-              )}
-              <button
-                type="button"
-                className={`viewer-hud-btn ${wireframe ? 'active' : ''}`}
-                onClick={() => setWireframe((prev) => !prev)}
-                title="Exibir malha de polígonos (Wireframe) [W]"
-              >
-                <Box size={14} />
-                <span>Malha</span>
-              </button>
-            </div>
 
-            {autoRotate && (
-              <div className="viewer-hud-speed-wrapper">
-                <div className="viewer-hud-speed-header">
-                  <span>Velocidade</span>
-                  <span className="viewer-hud-speed-badge">{autoRotateSpeed.toFixed(1)}x</span>
+                <button
+                  type="button"
+                  className="viewer-sidebar-close-btn"
+                  onClick={() => {
+                    setIsSidebarOpen(false)
+                    setIsSidebarPinned(false)
+                  }}
+                  title="Fechar barra de controles"
+                  aria-label="Fechar barra de controles"
+                >
+                  <X size={15} />
+                </button>
+            </div>
+          </div>
+
+            {/* Scrollable Group Content */}
+            <div className="viewer-sidebar-scroll-area">
+              {/* 1. Camera Mode */}
+              <div className="viewer-hud-group">
+                <span className="viewer-hud-label">Modo da Câmera</span>
+                <div className="viewer-hud-row">
+                  <button
+                    type="button"
+                    className={`viewer-hud-btn ${controlMode === 'orbit' ? 'active' : ''}`}
+                    onClick={() => setControlMode('orbit')}
+                    title="Modo Girar: Orbitar a câmera"
+                  >
+                    <Orbit size={14} />
+                    <span>Girar</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`viewer-hud-btn ${controlMode === 'pan' ? 'active' : ''}`}
+                    onClick={() => setControlMode('pan')}
+                    title="Modo Mover: Deslocar ponto de foco"
+                  >
+                    <Move size={14} />
+                    <span>Mover</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`viewer-hud-btn ${controlMode === 'fps' ? 'active' : ''}`}
+                    onClick={() => setControlMode('fps')}
+                    title="Modo FPS: Navegação em 1ª pessoa com WASD"
+                  >
+                    <Eye size={14} />
+                    <span>FPS</span>
+                  </button>
                 </div>
-                <div className="viewer-hud-speed-pills">
-                  {[0.5, 1.0, 2.0, 4.0, 8.0, 12.0, 16.0, 24.0].map((spd) => (
+              </div>
+
+              {/* 2. Camera Angles */}
+              <div className="viewer-hud-group">
+                <span className="viewer-hud-label">Ângulo de Visão</span>
+                <div className="viewer-hud-grid">
+                  <button
+                    type="button"
+                    className={`viewer-hud-mini-btn ${activeAnglePreset === 'iso' ? 'active' : ''}`}
+                    onClick={() => setAnglePreset('iso')}
+                    title="Visão Isométrica 3D"
+                  >
+                    3D
+                  </button>
+                  <button
+                    type="button"
+                    className={`viewer-hud-mini-btn ${activeAnglePreset === 'front' ? 'active' : ''}`}
+                    onClick={() => setAnglePreset('front')}
+                    title="Visão Frontal"
+                  >
+                    Frente
+                  </button>
+                  <button
+                    type="button"
+                    className={`viewer-hud-mini-btn ${activeAnglePreset === 'top' ? 'active' : ''}`}
+                    onClick={() => setAnglePreset('top')}
+                    title="Visão Superior (Topo)"
+                  >
+                    Topo
+                  </button>
+                  <button
+                    type="button"
+                    className={`viewer-hud-mini-btn ${activeAnglePreset === 'left' ? 'active' : ''}`}
+                    onClick={() => setAnglePreset('left')}
+                    title="Visão Lateral Esquerda"
+                  >
+                    Esq.
+                  </button>
+                  <button
+                    type="button"
+                    className={`viewer-hud-mini-btn ${activeAnglePreset === 'right' ? 'active' : ''}`}
+                    onClick={() => setAnglePreset('right')}
+                    title="Visão Lateral Direita"
+                  >
+                    Dir.
+                  </button>
+                  <button
+                    type="button"
+                    className={`viewer-hud-mini-btn ${activeAnglePreset === 'back' ? 'active' : ''}`}
+                    onClick={() => setAnglePreset('back')}
+                    title="Visão Traseira"
+                  >
+                    Trás
+                  </button>
+                </div>
+              </div>
+
+              {/* 3. Focus Target & Zoom */}
+              <div className="viewer-hud-group">
+                <span className="viewer-hud-label">Ponto de Foco & Zoom</span>
+                <div className="viewer-hud-row mb-2">
+                  <button
+                    type="button"
+                    className="viewer-hud-btn"
+                    onClick={handleFocusCenter}
+                    title="Centralizar ponto de rotação e zoom no centro do modelo [F]"
+                  >
+                    <Crosshair size={14} />
+                    <span>Centro</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="viewer-hud-icon-btn"
+                    onClick={handleFocusTop}
+                    title="Focar ponto de zoom na parte superior do modelo"
+                  >
+                    <ArrowUp size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    className="viewer-hud-icon-btn"
+                    onClick={handleFocusBottom}
+                    title="Focar ponto de zoom na base do modelo"
+                  >
+                    <ArrowDown size={14} />
+                  </button>
+                </div>
+
+                <div className="viewer-hud-row">
+                  <button
+                    type="button"
+                    className="viewer-hud-icon-btn"
+                    onClick={() => triggerCameraAction('zoomIn')}
+                    title="Aproximar zoom (+)"
+                  >
+                    <Plus size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    className="viewer-hud-icon-btn"
+                    onClick={() => triggerCameraAction('zoomOut')}
+                    title="Afastar zoom (-)"
+                  >
+                    <Minus size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    className="viewer-hud-btn"
+                    onClick={handleResetCamera}
+                    title="Resetar câmera para enquadramento inicial [R]"
+                  >
+                    <RefreshCcw size={13} />
+                    <span>Resetar</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 4. Auto-Giro & Velocidade */}
+              <div className="viewer-hud-group">
+                <button
+                  type="button"
+                  className={`viewer-hud-btn full-width ${autoRotate ? 'active' : ''}`}
+                  onClick={() => setAutoRotate((prev) => !prev)}
+                  title="Girar o modelo 3D continuamente em 360° [Espaço]"
+                >
+                  <RotateCw size={14} className={autoRotate ? 'spin' : ''} />
+                  <span>Auto-Giro: {autoRotate ? 'Ativado' : 'Pausado'}</span>
+                </button>
+
+                {autoRotate && (
+                  <div className="viewer-hud-speed-wrapper" style={{ marginTop: '8px' }}>
+                    <div className="viewer-hud-speed-header">
+                      <span>Velocidade</span>
+                      <span className="viewer-hud-speed-badge">{autoRotateSpeed.toFixed(1)}x</span>
+                    </div>
+                    <div className="viewer-hud-speed-pills">
+                      {[0.5, 1.0, 2.0, 4.0, 8.0, 12.0, 16.0, 24.0].map((spd) => (
+                        <button
+                          key={spd}
+                          type="button"
+                          className={`viewer-hud-speed-pill ${autoRotateSpeed === spd ? 'active' : ''}`}
+                          onClick={() => setAutoRotateSpeed(spd)}
+                        >
+                          {spd}x
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 5. Lighting */}
+              <div className="viewer-hud-group">
+                <span className="viewer-hud-label">
+                  <Sun size={12} /> Iluminação
+                </span>
+                <div className="viewer-hud-grid">
+                  {(
+                    [
+                      { id: 'studio', label: 'Estúdio' },
+                      { id: 'soft', label: 'Suave' },
+                      { id: 'warm', label: 'Quente' },
+                      { id: 'dramatic', label: 'Drama' },
+                    ] as const
+                  ).map((preset) => (
                     <button
-                      key={spd}
+                      key={preset.id}
                       type="button"
-                      className={`viewer-hud-speed-pill ${autoRotateSpeed === spd ? 'active' : ''}`}
-                      onClick={() => setAutoRotateSpeed(spd)}
+                      className={`viewer-hud-mini-btn ${lighting === preset.id ? 'active' : ''}`}
+                      onClick={() => setLighting(preset.id)}
                     >
-                      {spd}x
+                      {preset.label}
                     </button>
                   ))}
                 </div>
               </div>
-            )}
-          </div>
 
-          {/* Lighting Presets */}
-          <div className="viewer-hud-group">
-            <span className="viewer-hud-label">
-              <Sun size={12} /> Iluminação
-            </span>
-            <div className="viewer-hud-grid">
-              {(
-                [
-                  { id: 'studio', label: 'Estúdio' },
-                  { id: 'soft', label: 'Suave' },
-                  { id: 'warm', label: 'Quente' },
-                  { id: 'dramatic', label: 'Drama' },
-                ] as const
-              ).map((preset) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  className={`viewer-hud-mini-btn ${lighting === preset.id ? 'active' : ''}`}
-                  onClick={() => setLighting(preset.id)}
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Ground / Pedestal Type */}
-          <div className="viewer-hud-group">
-            <div className="viewer-hud-label-toggle">
-              <span>
-                <Layers size={12} /> Chão / Base
-              </span>
-              <button
-                type="button"
-                className="viewer-hud-toggle-link"
-                onClick={() => setShowGround((prev) => !prev)}
-              >
-                {showGround ? 'Ocultar' : 'Exibir'}
-              </button>
-            </div>
-            {showGround && (
-              <div className="viewer-hud-grid">
-                {(
-                  [
-                    { id: 'grid', label: 'Grade' },
-                    { id: 'shadow', label: 'Sombra' },
-                    { id: 'pedestal', label: 'Pedestal' },
-                    { id: 'checker', label: 'Xadrez' },
-                    { id: 'radial', label: 'Radial' },
-                    { id: 'none', label: 'Sem' },
-                  ] as const
-                ).map((type) => (
+              {/* 6. Ground / Pedestal Type */}
+              <div className="viewer-hud-group">
+                <div className="viewer-hud-label-toggle">
+                  <span>
+                    <Layers size={12} /> Chão / Base
+                  </span>
                   <button
-                    key={type.id}
                     type="button"
-                    className={`viewer-hud-mini-btn ${groundType === type.id ? 'active' : ''}`}
-                    onClick={() => setGroundType(type.id)}
+                    className="viewer-hud-toggle-link"
+                    onClick={() => setShowGround((prev) => !prev)}
                   >
-                    {type.label}
+                    {showGround ? 'Ocultar' : 'Exibir'}
                   </button>
-                ))}
+                </div>
+                {showGround && (
+                  <div className="viewer-hud-grid">
+                    {(
+                      [
+                        { id: 'shadow', label: 'Sombra' },
+                        { id: 'pedestal', label: 'Pedestal' },
+                        { id: 'none', label: 'Sem' },
+                      ] as const
+                    ).map((type) => (
+                      <button
+                        key={type.id}
+                        type="button"
+                        className={`viewer-hud-mini-btn ${groundType === type.id ? 'active' : ''}`}
+                        onClick={() => setGroundType(type.id)}
+                      >
+                        {type.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
         </aside>
       </div>

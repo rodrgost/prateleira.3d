@@ -3,7 +3,7 @@ import type { GlobalSettings, ShelfViewerSettings } from '../domain/types'
 export const DEFAULT_VIEWER_SETTINGS: Required<ShelfViewerSettings> = {
   backgroundColor: '#141519',
   showGround: true,
-  groundType: 'grid',
+  groundType: 'shadow',
   groundColor: '#4f627d',
   autoRotate: false,
   autoRotateSpeed: 2.0,

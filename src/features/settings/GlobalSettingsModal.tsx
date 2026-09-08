@@ -51,11 +51,8 @@ const BG_PRESETS = [
 ]
 
 const GROUND_TYPES: { type: GroundType; label: string; desc: string }[] = [
-  { type: 'grid', label: 'Grade 3D', desc: 'Linhas infinitas de perspectiva' },
   { type: 'shadow', label: 'Sombra Suave', desc: 'Oclusão de contato realista' },
   { type: 'pedestal', label: 'Pedestal 3D', desc: 'Podium chanfrado de vitrine' },
-  { type: 'checker', label: 'Tabuleiro', desc: 'Piso xadrez de estúdio' },
-  { type: 'radial', label: 'Disco Radial', desc: 'Anéis concêntricos' },
 ]
 
 const LIGHTING_PRESETS: { preset: LightingPreset; label: string }[] = [
@@ -244,11 +241,8 @@ export function GlobalSettingsModal({
                         onClick={() => updateViewer({ groundType: g.type })}
                       >
                         <div className="ground-icon-wrap">
-                          {g.type === 'grid' && <Grid size={18} />}
                           {g.type === 'shadow' && <CircleDot size={18} />}
                           {g.type === 'pedestal' && <Layers size={18} />}
-                          {g.type === 'checker' && <Maximize2 size={18} />}
-                          {g.type === 'radial' && <Compass size={18} />}
                         </div>
                         <div className="ground-card-info">
                           <strong>{g.label}</strong>
@@ -265,7 +259,7 @@ export function GlobalSettingsModal({
                 <div className="settings-section">
                   <label className="section-title">
                     <Palette size={15} />
-                    <span>Cor Padrão do Chão / Grade</span>
+                    <span>Cor Padrão do Chão / Base</span>
                   </label>
                   <div className="color-swatches-row">
                     {GROUND_COLOR_PRESETS.map((color) => (

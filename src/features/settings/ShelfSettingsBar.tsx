@@ -38,11 +38,8 @@ const BG_PRESETS = [
 ]
 
 const GROUND_TYPES: { type: GroundType; label: string; desc: string }[] = [
-  { type: 'grid', label: 'Grade 3D', desc: 'Linhas infinitas de perspectiva' },
   { type: 'shadow', label: 'Sombra Suave', desc: 'Oclusão de contato realista' },
   { type: 'pedestal', label: 'Pedestal 3D', desc: 'Podium chanfrado de vitrine' },
-  { type: 'checker', label: 'Tabuleiro', desc: 'Piso xadrez de estúdio' },
-  { type: 'radial', label: 'Disco Radial', desc: 'Anéis concêntricos' },
 ]
 
 const LIGHTING_PRESETS: { preset: LightingPreset; label: string }[] = [
@@ -202,11 +199,8 @@ export function ShelfSettingsBar({
                       onClick={() => update({ groundType: g.type })}
                     >
                       <div className="ground-icon-wrap">
-                        {g.type === 'grid' && <Grid size={18} />}
                         {g.type === 'shadow' && <CircleDot size={18} />}
                         {g.type === 'pedestal' && <Layers size={18} />}
-                        {g.type === 'checker' && <Maximize2 size={18} />}
-                        {g.type === 'radial' && <Compass size={18} />}
                       </div>
                       <div className="ground-card-info">
                         <strong>{g.label}</strong>
@@ -223,7 +217,7 @@ export function ShelfSettingsBar({
               <div className="settings-block">
                 <label className="settings-label">
                   <Palette size={14} />
-                  <span>Cor do Chão / Grade</span>
+                  <span>Cor do Chão / Base</span>
                 </label>
                 <div className="color-swatches-row">
                   {GROUND_COLOR_PRESETS.map((color) => (
@@ -235,7 +229,7 @@ export function ShelfSettingsBar({
                       onClick={() => update({ groundColor: color })}
                     />
                   ))}
-                  <label className="custom-color-picker" title="Cor personalizada da grade/piso">
+                  <label className="custom-color-picker" title="Cor personalizada da base">
                     <input
                       type="color"
                       value={currentGroundColor}
