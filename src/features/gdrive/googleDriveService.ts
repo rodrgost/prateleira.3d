@@ -570,7 +570,7 @@ export async function backupAllDataToDrive(options: {
       Boolean(existingFile) &&
       existingFile?.size != null &&
       Boolean(model.file) &&
-      Number(existingFile?.size) === model.file.size
+      Number(existingFile?.size) === model.file?.size
 
     const needsModelUpload = forceAll || !existingFile || !modelSizeMatches
 
@@ -760,6 +760,8 @@ export async function restoreAllDataFromDrive(options: {
     if (modelBlob) {
       await shelfDatabase.models.put({
         ...meta,
+        driveFileId: driveFile?.id || existingLocal?.driveFileId,
+        inCloud: false,
         file: modelBlob,
         thumbnail: thumbBlob,
       })
@@ -784,4 +786,155 @@ export async function restoreAllDataFromDrive(options: {
     restoredModelsCount,
     restoredShelvesCount: backupConfig.shelves?.length || 0,
   }
+}
+
+/**
+ * Restores catalog, shelves, and model thumbnails from Google Drive without downloading heavy 3D files.
+ * Marks models as `inCloud: true` and attaches `driveFileId` for on-demand downloading.
+ */
+export async function restoreMetadataOnlyFromDrive(options: {
+  onProgress?: (progress: GDriveSyncProgress) => void
+  clientIdOverride?: string
+}): Promise<{
+  config: GDriveBackupConfig
+  restoredModelsCount: number
+  restoredShelvesCount: number
+}> {
+  const { onProgress, clientIdOverride } = options
+
+  onProgress?.({
+    phase: 'auth',
+    current: 0,
+    total: 100,
+    detail: 'Conectando ao Google Drive...',
+  })
+
+  const { token } = await authenticateGoogle(clientIdOverride)
+
+  onProgress?.({
+    phase: 'folder',
+    current: 10,
+    total: 100,
+    detail: 'Localizando pasta "Prateleira 3D"...',
+  })
+
+  const { rootFolder, modelsFolder } = await getOrCreateAppFolders(token)
+
+  // 1. Read config.json
+  onProgress?.({
+    phase: 'config',
+    current: 20,
+    total: 100,
+    detail: 'Carregando estrutura e catálogo de modelos...',
+  })
+
+  const rootFiles = await listFilesInFolder(rootFolder.id, token)
+  const configFile = rootFiles.find((f) => f.name === 'config.json')
+
+  if (!configFile) {
+    throw new Error('Nenhum arquivo "config.json" encontrado na pasta do Google Drive.')
+  }
+
+  const backupConfig = await downloadFileJson<GDriveBackupConfig>(configFile.id, token)
+
+  if (!backupConfig || !backupConfig.models) {
+    throw new Error('O arquivo de configuração no Google Drive está corrompido ou é inválido.')
+  }
+
+  // 2. Fetch models folder files to find driveFileId and thumbnail files
+  const driveModelFiles = await listFilesInFolder(modelsFolder.id, token)
+  const driveFilesByName = new Map(driveModelFiles.map((f) => [f.name, f]))
+
+  // 3. Process each model metadata (download thumbnail if needed, save driveFileId)
+  const totalModels = backupConfig.models.length
+  let restoredModelsCount = 0
+
+  for (let i = 0; i < backupConfig.models.length; i++) {
+    const meta = backupConfig.models[i]
+    const modelFileName = `${meta.id}.${meta.format}`
+    const driveFile = driveFilesByName.get(modelFileName)
+
+    const existingLocal = await shelfDatabase.models.get(meta.id)
+    const localFileExists = Boolean(existingLocal?.file)
+
+    // Download thumbnail or reuse local thumbnail
+    let thumbBlob: Blob | undefined = undefined
+    const thumbFileName = `${meta.id}.thumb.png`
+    const driveThumb = driveFilesByName.get(thumbFileName)
+
+    const localThumbMatches =
+      Boolean(existingLocal?.thumbnail) &&
+      driveThumb?.size != null &&
+      existingLocal?.thumbnail?.size === Number(driveThumb.size)
+
+    if (localThumbMatches && existingLocal?.thumbnail) {
+      thumbBlob = existingLocal.thumbnail
+    } else if (driveThumb) {
+      onProgress?.({
+        phase: 'downloading',
+        current: i + 1,
+        total: totalModels,
+        detail: `Baixando miniatura (${i + 1}/${totalModels}): ${meta.name}`,
+      })
+      thumbBlob = await downloadFileBlob(driveThumb.id, token)
+    }
+
+    // Save model metadata with driveFileId and inCloud status
+    await shelfDatabase.models.put({
+      ...meta,
+      driveFileId: driveFile?.id || existingLocal?.driveFileId,
+      inCloud: !localFileExists,
+      file: existingLocal?.file, // Keep local file if already downloaded
+      thumbnail: thumbBlob,
+    })
+
+    restoredModelsCount++
+  }
+
+  // 4. Restore shelves
+  if (backupConfig.shelves && backupConfig.shelves.length > 0) {
+    await shelfDatabase.shelves.bulkPut(backupConfig.shelves)
+  }
+
+  onProgress?.({
+    phase: 'complete',
+    current: 100,
+    total: 100,
+    detail: `Sincronização leve concluída! ${restoredModelsCount} modelos e capas carregados.`,
+  })
+
+  return {
+    config: backupConfig,
+    restoredModelsCount,
+    restoredShelvesCount: backupConfig.shelves?.length || 0,
+  }
+}
+
+/**
+ * Ensures that a model's 3D file Blob is available in local IndexedDB.
+ * If missing but stored in Google Drive, fetches it on demand and persists it.
+ */
+export async function ensureModelFileDownloaded(modelId: string, token?: string): Promise<Blob | null> {
+  const stored = await shelfDatabase.models.get(modelId)
+  if (!stored) return null
+
+  // If 3D file is already downloaded locally, return it
+  if (stored.file) return stored.file
+
+  // If driveFileId is available, download on demand
+  if (stored.driveFileId) {
+    const activeToken = token || (await authenticateGoogle()).token
+    const downloadedBlob = await downloadFileBlob(stored.driveFileId, activeToken)
+
+    // Save downloaded blob locally and remove inCloud flag
+    await shelfDatabase.models.put({
+      ...stored,
+      file: downloadedBlob,
+      inCloud: false,
+    })
+
+    return downloadedBlob
+  }
+
+  return null
 }

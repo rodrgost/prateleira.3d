@@ -2,8 +2,10 @@ import Dexie, { type EntityTable } from 'dexie'
 import type { ModelAsset, SceneInstance, Shelf } from '../domain/types'
 
 export interface StoredModel extends ModelAsset {
-  file: Blob
+  file?: Blob
   thumbnail?: Blob
+  driveFileId?: string
+  inCloud?: boolean
 }
 
 class ShelfDatabase extends Dexie {

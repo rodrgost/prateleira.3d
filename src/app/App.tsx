@@ -41,6 +41,7 @@ import { AiModelGeneratorModal } from '../features/generator/AiModelGeneratorMod
 import { EditorPage } from '../features/editor/EditorPage'
 import { ModelViewerModal } from '../features/viewer/ModelViewerModal'
 import { ShelfShowcaseModal } from '../features/viewer/ShelfShowcaseModal'
+import { ensureModelFileDownloaded } from '../features/gdrive/googleDriveService'
 import { usePwaInstall } from '../pwa'
 
 export function App() {
@@ -169,12 +170,28 @@ export function App() {
   useEffect(() => {
     let objectUrl = ''
     if (selectedModel) {
-      shelfDatabase.models.get(selectedModel.id).then((storedModel) => {
-        if (storedModel) {
-          objectUrl = URL.createObjectURL(storedModel.file)
-          setSelectedModelUrl(objectUrl)
-        }
-      })
+      setIsProcessing(true)
+      setMessage(`Carregando modelo 3D "${selectedModel.name}"...`)
+      ensureModelFileDownloaded(selectedModel.id)
+        .then((fileBlob) => {
+          if (fileBlob) {
+            objectUrl = URL.createObjectURL(fileBlob)
+            setSelectedModelUrl(objectUrl)
+            setModels((prev) =>
+              prev.map((m) => (m.id === selectedModel.id ? { ...m, inCloud: false } : m))
+            )
+            setMessage('')
+          } else {
+            setMessage('Não foi possível carregar o arquivo 3D do modelo.')
+          }
+        })
+        .catch((err) => {
+          console.error(err)
+          setMessage('Erro ao carregar modelo 3D do Google Drive.')
+        })
+        .finally(() => {
+          setIsProcessing(false)
+        })
     } else {
       setSelectedModelUrl('')
     }
@@ -240,12 +257,17 @@ export function App() {
   async function handleRotate90(model: ModelAsset) {
     try {
       setIsProcessing(true)
+      const fileBlob = await ensureModelFileDownloaded(model.id)
+      if (!fileBlob) {
+        setMessage('Não foi possível obter o arquivo 3D para rotacionar.')
+        return
+      }
       const stored = await shelfDatabase.models.get(model.id)
-      if (!stored?.file) return
+      if (!stored) return
 
       const targetShelf = model.shelfId ? shelves.find((s) => s.id === model.shelfId) : undefined
       const targetSettings = resolveViewerSettings(targetShelf?.settings, globalSettings, theme)
-      const rotatedFile = await rotateGlbModel(stored.file, Math.PI / 2, model.name)
+      const rotatedFile = await rotateGlbModel(fileBlob, Math.PI / 2, model.name)
       const newThumbnail = await generateModelThumbnail(rotatedFile, targetSettings)
 
       await shelfDatabase.models.put({
@@ -519,17 +541,23 @@ export function App() {
   // Download model
   async function downloadModel(model: ModelAsset) {
     try {
-      const stored = await shelfDatabase.models.get(model.id)
-      if (!stored?.file) throw new Error('Arquivo não encontrado')
-      const url = URL.createObjectURL(stored.file)
+      setIsProcessing(true)
+      setMessage(`Baixando "${model.name}"...`)
+      const fileBlob = await ensureModelFileDownloaded(model.id)
+      if (!fileBlob) throw new Error('Arquivo não encontrado')
+      const url = URL.createObjectURL(fileBlob)
       const a = document.createElement('a')
       a.href = url
       a.download = `${model.name}.${model.format}`
       a.click()
       URL.revokeObjectURL(url)
+      setModels((prev) => prev.map((m) => (m.id === model.id ? { ...m, inCloud: false } : m)))
+      setMessage(`Download de "${model.name}" concluído!`)
     } catch (err) {
       console.error(err)
       setMessage('Erro ao baixar o modelo 3D.')
+    } finally {
+      setIsProcessing(false)
     }
   }
 
@@ -1057,6 +1085,29 @@ export function App() {
                             <Box size={18} />
                           </div>
                         )}
+                        {model.inCloud && (
+                          <span
+                            className="compact-cloud-badge"
+                            title="Modelo salvo no Google Drive (o arquivo 3D será baixado ao abrir)"
+                            style={{
+                              position: 'absolute',
+                              top: '4px',
+                              right: '4px',
+                              background: 'rgba(16, 185, 129, 0.85)',
+                              color: '#fff',
+                              borderRadius: '4px',
+                              padding: '2px 4px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '2px',
+                              fontSize: '0.65rem',
+                              fontWeight: 600,
+                              zIndex: 2,
+                            }}
+                          >
+                            <Cloud size={10} />
+                          </span>
+                        )}
                       </div>
                       <div className="compact-card-body">
                         <h3 className="compact-title">{model.name}</h3>
@@ -1112,6 +1163,27 @@ export function App() {
                         </button>
 
                         <div className="thumb-overlay-top">
+                          {model.inCloud && (
+                            <span
+                              className="model-cloud-badge"
+                              title="Modelo salvo no Google Drive (o arquivo 3D será baixado ao abrir)"
+                              style={{
+                                background: 'rgba(16, 185, 129, 0.9)',
+                                color: '#fff',
+                                borderRadius: '12px',
+                                padding: '3px 8px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                                boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+                              }}
+                            >
+                              <Cloud size={12} />
+                              <span>Nuvem</span>
+                            </span>
+                          )}
                           <div className="thumb-hover-actions">
                             {model.shelfId && (
                               <>

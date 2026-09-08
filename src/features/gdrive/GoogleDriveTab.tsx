@@ -22,6 +22,7 @@ import {
   getStoredLastBackup,
   getStoredUser,
   restoreAllDataFromDrive,
+  restoreMetadataOnlyFromDrive,
 } from './googleDriveService'
 import type { GDriveSyncProgress, GDriveUser } from './types'
 
@@ -123,6 +124,42 @@ export function GoogleDriveTab({ globalSettings, shelves, onDataRestored }: Goog
     }
   }
 
+  const handleLightRestore = async () => {
+    if (!clientId.trim()) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Configure a variável VITE_GOOGLE_CLIENT_ID para sincronizar do Google Drive.',
+      })
+      return
+    }
+
+    setIsProcessing(true)
+    setStatusMessage(null)
+    setProgress({ phase: 'auth', current: 0, total: 100, detail: 'Conectando ao Google Drive...' })
+
+    try {
+      const result = await restoreMetadataOnlyFromDrive({
+        clientIdOverride: clientId,
+        onProgress: (p) => setProgress(p),
+      })
+      setUser(getStoredUser())
+      setFolderId(getStoredFolderId())
+      if (onDataRestored) {
+        await onDataRestored()
+      }
+      setStatusMessage({
+        type: 'success',
+        text: `Sincronização leve concluída! ${result.restoredModelsCount} modelos e ${result.restoredShelvesCount} prateleiras atualizados. Os arquivos 3D serão baixados sob demanda ao abrir.`,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao sincronizar do Google Drive.'
+      setStatusMessage({ type: 'error', text: msg })
+      setProgress(null)
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
   const handleRestore = async () => {
     if (!clientId.trim()) {
       setStatusMessage({
@@ -131,7 +168,7 @@ export function GoogleDriveTab({ globalSettings, shelves, onDataRestored }: Goog
       })
       return
     }
-    if (!window.confirm('Deseja restaurar os modelos e configurações do Google Drive? Os dados locais serão sincronizados com a nuvem.')) {
+    if (!window.confirm('Deseja baixar TODOS os modelos 3D do Google Drive para o navegador? Isso pode levar algum tempo se você tiver arquivos grandes.')) {
       return
     }
 
@@ -151,7 +188,7 @@ export function GoogleDriveTab({ globalSettings, shelves, onDataRestored }: Goog
       }
       setStatusMessage({
         type: 'success',
-        text: `Restauração concluída! ${result.restoredModelsCount} modelos e ${result.restoredShelvesCount} prateleiras restaurados.`,
+        text: `Restauração completa concluída! ${result.restoredModelsCount} modelos e ${result.restoredShelvesCount} prateleiras restaurados totalmente off-line.`,
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao restaurar do Google Drive.'
@@ -407,19 +444,34 @@ export function GoogleDriveTab({ globalSettings, shelves, onDataRestored }: Goog
             <CloudDownload size={22} />
           </div>
           <div className="gdrive-action-content">
-            <h4>Restaurar do Google Drive</h4>
+            <h4>Restaurar / Sincronizar da Nuvem</h4>
             <p>
-              Baixa as prateleiras, preferências e arquivos 3D salvos na pasta <strong>Prateleira 3D</strong> para este navegador.
+              Carregue suas prateleiras e catálogo salvos no Google Drive com duas opções de velocidade:
             </p>
-            <button
-              type="button"
-              className="gdrive-action-btn secondary"
-              onClick={handleRestore}
-              disabled={isProcessing || !clientId.trim()}
-            >
-              <CloudDownload size={16} />
-              <span>{isProcessing ? 'Restaurando...' : 'Restaurar do Drive'}</span>
-            </button>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
+              <button
+                type="button"
+                className="gdrive-action-btn primary"
+                onClick={handleLightRestore}
+                disabled={isProcessing || !clientId.trim()}
+                title="Sincroniza capas e nomes em segundos. Baixa os modelos 3D sob demanda ao abrir."
+              >
+                <Sparkles size={16} />
+                <span>{isProcessing ? 'Sincronizando...' : '⚡ Sincronizar Catálogo (Modo Leve)'}</span>
+              </button>
+
+              <button
+                type="button"
+                className="gdrive-action-btn secondary"
+                onClick={handleRestore}
+                disabled={isProcessing || !clientId.trim()}
+                title="Baixa todos os arquivos 3D (.glb) para uso 100% off-line."
+              >
+                <CloudDownload size={16} />
+                <span>{isProcessing ? 'Baixando...' : '📥 Baixar Tudo (Off-line Completo)'}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

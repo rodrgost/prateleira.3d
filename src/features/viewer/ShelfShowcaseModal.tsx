@@ -9,6 +9,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ModelAsset, ShelfViewerSettings } from '../../domain/types'
 import { shelfDatabase } from '../../storage/db'
+import { ensureModelFileDownloaded } from '../gdrive/googleDriveService'
 import { ModelViewer } from './ModelViewer'
 
 export interface ShelfShowcaseModalProps {
@@ -88,23 +89,28 @@ export function ShelfShowcaseModal({
     let isMounted = true
     setIsLoading(true)
 
-    shelfDatabase.models.get(currentModel.id).then((storedModel) => {
-      if (!isMounted) return
+    ensureModelFileDownloaded(currentModel.id)
+      .then((fileBlob) => {
+        if (!isMounted) return
 
-      if (currentObjectUrlRef.current) {
-        URL.revokeObjectURL(currentObjectUrlRef.current)
-        currentObjectUrlRef.current = ''
-      }
+        if (currentObjectUrlRef.current) {
+          URL.revokeObjectURL(currentObjectUrlRef.current)
+          currentObjectUrlRef.current = ''
+        }
 
-      if (storedModel?.file) {
-        const objectUrl = URL.createObjectURL(storedModel.file)
-        currentObjectUrlRef.current = objectUrl
-        setCurrentModelUrl(objectUrl)
-      } else {
-        setCurrentModelUrl('')
-      }
-      setIsLoading(false)
-    })
+        if (fileBlob) {
+          const objectUrl = URL.createObjectURL(fileBlob)
+          currentObjectUrlRef.current = objectUrl
+          setCurrentModelUrl(objectUrl)
+        } else {
+          setCurrentModelUrl('')
+        }
+        setIsLoading(false)
+      })
+      .catch((err) => {
+        console.error(err)
+        if (isMounted) setIsLoading(false)
+      })
 
     return () => {
       isMounted = false

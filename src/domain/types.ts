@@ -22,6 +22,8 @@ export interface ModelAsset {
   tags: string[]
   createdAt: string
   thumbnailUrl?: string
+  driveFileId?: string
+  inCloud?: boolean
 }
 
 export interface SceneInstance {
