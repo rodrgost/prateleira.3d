@@ -6,10 +6,48 @@ const STORAGE_CLIENT_ID_KEY = 'prateleira_gdrive_client_id'
 const STORAGE_USER_KEY = 'prateleira_gdrive_user'
 const STORAGE_LAST_BACKUP_KEY = 'prateleira_gdrive_last_backup'
 const STORAGE_FOLDER_ID_KEY = 'prateleira_gdrive_folder_id'
+const STORAGE_TOKEN_KEY = 'prateleira_gdrive_access_token'
+const STORAGE_EXPIRES_KEY = 'prateleira_gdrive_token_expires'
 
-// Token caching in memory during session
+// Token caching in memory & storage
 let cachedAccessToken: string | null = null
 let tokenExpiresAt: number = 0
+
+function getStoredAccessToken(): string | null {
+  if (typeof window === 'undefined') return null
+  if (cachedAccessToken && Date.now() < tokenExpiresAt - 30000) {
+    return cachedAccessToken
+  }
+  const token = localStorage.getItem(STORAGE_TOKEN_KEY)
+  const expiresStr = localStorage.getItem(STORAGE_EXPIRES_KEY)
+  if (!token || !expiresStr) return null
+
+  const expiresAt = Number(expiresStr)
+  if (isNaN(expiresAt) || Date.now() >= expiresAt - 30000) {
+    localStorage.removeItem(STORAGE_TOKEN_KEY)
+    localStorage.removeItem(STORAGE_EXPIRES_KEY)
+    return null
+  }
+  cachedAccessToken = token
+  tokenExpiresAt = expiresAt
+  return token
+}
+
+function saveStoredAccessToken(token: string | null, expiresInSeconds: number = 3600): void {
+  if (typeof window === 'undefined') return
+  if (!token) {
+    cachedAccessToken = null
+    tokenExpiresAt = 0
+    localStorage.removeItem(STORAGE_TOKEN_KEY)
+    localStorage.removeItem(STORAGE_EXPIRES_KEY)
+  } else {
+    const expiresAt = Date.now() + expiresInSeconds * 1000
+    cachedAccessToken = token
+    tokenExpiresAt = expiresAt
+    localStorage.setItem(STORAGE_TOKEN_KEY, token)
+    localStorage.setItem(STORAGE_EXPIRES_KEY, String(expiresAt))
+  }
+}
 
 declare global {
   interface Window {
@@ -126,12 +164,11 @@ export function setStoredFolderId(folderId: string | null): void {
  * Checks if user is authenticated and token is still valid
  */
 export function isGoogleConnected(): boolean {
-  return !!cachedAccessToken && Date.now() < tokenExpiresAt
+  return Boolean(getStoredAccessToken())
 }
 
 export function disconnectGoogle(): void {
-  cachedAccessToken = null
-  tokenExpiresAt = 0
+  saveStoredAccessToken(null)
   saveStoredUser(null)
   setStoredFolderId(null)
 }
@@ -140,8 +177,7 @@ export function disconnectGoogle(): void {
  * Handles Drive API errors, resetting cached tokens and returning user-friendly messages
  */
 function handleDriveApiError(res: Response, text: string, actionDesc: string): Error {
-  cachedAccessToken = null
-  tokenExpiresAt = 0
+  saveStoredAccessToken(null)
   if (
     res.status === 403 &&
     (text.includes('ACCESS_TOKEN_SCOPE_INSUFFICIENT') || text.includes('insufficientPermissions'))
@@ -165,16 +201,19 @@ export async function authenticateGoogle(
     throw new Error('Google Client ID não configurado. Defina a variável de ambiente VITE_GOOGLE_CLIENT_ID.')
   }
 
+  // Check if current cached/stored token is still valid (unless forceConsent requested)
+  if (!forceConsent) {
+    const validToken = getStoredAccessToken()
+    if (validToken) {
+      const user = getStoredUser() || (await fetchGoogleUserInfo(validToken))
+      return { token: validToken, user }
+    }
+  }
+
   await loadGoogleScript()
 
   if (!window.google?.accounts?.oauth2) {
     throw new Error('SDK do Google Identity Services não disponível.')
-  }
-
-  // Check if current cached token is still valid (leave a 30s buffer) unless forceConsent requested
-  if (!forceConsent && cachedAccessToken && Date.now() < tokenExpiresAt - 30000) {
-    const user = getStoredUser() || (await fetchGoogleUserInfo(cachedAccessToken))
-    return { token: cachedAccessToken, user }
   }
 
   return new Promise((resolve, reject) => {
@@ -188,14 +227,12 @@ export async function authenticateGoogle(
         ].join(' '),
         callback: async (response) => {
           if (response.error) {
-            cachedAccessToken = null
-            tokenExpiresAt = 0
+            saveStoredAccessToken(null)
             reject(new Error(`Erro de autenticação Google: ${response.error}`))
             return
           }
           if (!response.access_token) {
-            cachedAccessToken = null
-            tokenExpiresAt = 0
+            saveStoredAccessToken(null)
             reject(new Error('Nenhum token de acesso foi retornado pelo Google.'))
             return
           }
@@ -205,8 +242,7 @@ export async function authenticateGoogle(
             const grantedScopes = response.scope.split(' ')
             const hasDriveScope = grantedScopes.some((s) => s.includes('drive'))
             if (!hasDriveScope) {
-              cachedAccessToken = null
-              tokenExpiresAt = 0
+              saveStoredAccessToken(null)
               reject(
                 new Error(
                   'Atenção: A permissão para acessar o Google Drive NÃO foi marcada. Na tela de autorização do Google, marque a caixa de seleção autorizando o app a salvar arquivos no Google Drive.'
@@ -218,8 +254,7 @@ export async function authenticateGoogle(
 
           const token = response.access_token
           const expiresIn = response.expires_in || 3600
-          cachedAccessToken = token
-          tokenExpiresAt = Date.now() + expiresIn * 1000
+          saveStoredAccessToken(token, expiresIn)
 
           try {
             const user = await fetchGoogleUserInfo(token)
@@ -235,7 +270,7 @@ export async function authenticateGoogle(
         },
       })
 
-      tokenClient.requestAccessToken({ prompt: forceConsent || !cachedAccessToken ? 'consent' : '' })
+      tokenClient.requestAccessToken({ prompt: forceConsent ? 'consent' : '' })
     } catch (err) {
       reject(err instanceof Error ? err : new Error('Falha ao inicializar autenticação Google'))
     }

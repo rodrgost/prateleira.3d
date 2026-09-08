@@ -49,7 +49,7 @@ export function GoogleDriveTab({ globalSettings, shelves, onDataRestored }: Goog
     setFolderId(getStoredFolderId())
   }, [])
 
-  const handleConnect = async (forceConsent: boolean = true) => {
+  const handleConnect = async (forceConsent: boolean = false) => {
     if (!clientId.trim()) {
       setStatusMessage({
         type: 'error',

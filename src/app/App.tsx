@@ -776,7 +776,7 @@ export function App() {
               title="Instalar Prateleira 3D no Chrome"
             >
               <Download size={15} />
-              <span>Instalar App</span>
+              <span className="topbar-btn-text">Instalar App</span>
             </button>
           )}
 
@@ -790,7 +790,7 @@ export function App() {
             title="Backup e Sincronização no Google Drive"
           >
             <Cloud size={15} />
-            <span>Google Drive</span>
+            <span className="topbar-btn-text">Google Drive</span>
           </button>
 
           <button
