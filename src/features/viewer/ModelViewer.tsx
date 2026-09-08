@@ -141,7 +141,7 @@ function GroundRenderer({
             <ringGeometry args={[2.14, 2.2, 48]} />
             <meshStandardMaterial color="#ffffff" opacity={0.6} transparent roughness={0.1} metalness={0.8} />
           </mesh>
-          <ContactShadows position={[0, -0.09, 0]} opacity={0.8} scale={7} blur={2.0} far={2.5} />
+          <ContactShadows position={[0, -0.09, 0]} opacity={0.8} scale={7} blur={2.0} far={2.5} resolution={512} />
         </group>
       )
 
@@ -154,6 +154,7 @@ function GroundRenderer({
           scale={9}
           blur={1.8}
           far={3.5}
+          resolution={512}
           color={groundColor === '#4f627d' ? '#000000' : groundColor}
         />
       )

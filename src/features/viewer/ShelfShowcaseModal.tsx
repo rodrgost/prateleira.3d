@@ -1,4 +1,4 @@
-import { Canvas } from '@react-three/fiber'
+import { SafeCanvas } from '../../components/SafeCanvas'
 import {
   Clock,
   Maximize2,
@@ -312,10 +312,9 @@ export function ShelfShowcaseModal({
       {/* 3D Canvas Viewport (Uses library default viewer settings, no config UI) */}
       <div className="showcase-canvas-container">
         {currentModelUrl && !isLoading ? (
-          <Canvas
-            key={currentModel.id}
+          <SafeCanvas
+            key={currentModel?.id}
             camera={{ position: [0, 0.5, 4.2], fov: 42, near: 0.005, far: 1000 }}
-            gl={{ antialias: true, alpha: false, preserveDrawingBuffer: true }}
           >
             <color attach="background" args={[bgColor]} />
             <ModelViewer
@@ -329,7 +328,7 @@ export function ShelfShowcaseModal({
               wireframe={false}
               controlMode="orbit"
             />
-          </Canvas>
+          </SafeCanvas>
         ) : (
           <div className="showcase-loading">
             <div className="showcase-spinner" />

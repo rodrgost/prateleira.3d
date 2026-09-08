@@ -1,7 +1,8 @@
 import { ContactShadows, Grid, OrbitControls, TransformControls, useGLTF } from '@react-three/drei'
-import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Box3, Group, Mesh, Object3D, Vector3 } from 'three'
+import { SafeCanvas } from '../../components/SafeCanvas'
 import type { EditorGroup, EditorItem, TransformMode, TransformSpace } from '../../domain/editorTypes'
 
 export interface EditorCanvasProps {
@@ -262,7 +263,7 @@ function EditorSceneContent({
           fadeStrength={1}
           infiniteGrid
         />
-        <ContactShadows opacity={0.65} scale={25} blur={2.5} far={5} color="#000000" />
+        <ContactShadows opacity={0.65} scale={25} blur={2.5} far={5} resolution={512} color="#000000" />
       </group>
 
       {/* Main Scene Root Group */}
@@ -360,14 +361,13 @@ function EditorSceneContent({
 export function EditorCanvas(props: EditorCanvasProps) {
   return (
     <div className="editor-canvas-wrapper">
-      <Canvas
+      <SafeCanvas
         camera={{ position: [3.5, 3.5, 5], fov: 45, near: 0.01, far: 1000 }}
-        gl={{ antialias: true, preserveDrawingBuffer: true, alpha: false }}
       >
         <color attach="background" args={['#0e1118']} />
         <fog attach="fog" args={['#0e1118', 18, 60]} />
         <EditorSceneContent {...props} />
-      </Canvas>
+      </SafeCanvas>
     </div>
   )
 }

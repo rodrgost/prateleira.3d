@@ -19,7 +19,11 @@ export function getShelfItemPosition(index: number, itemCount: number, itemsPerL
   const levelItemCount = Math.min(itemsPerLevel, itemCount - levelStart)
   const centeredIndex = indexInLevel - (levelItemCount - 1) / 2
 
-  return [centeredIndex * SHELF_ITEM_SPACING, SHELF_BOTTOM_LEVEL_Y + level * SHELF_LEVEL_HEIGHT, SHELF_ITEM_Z]
+  const x = Number((centeredIndex * SHELF_ITEM_SPACING).toFixed(4))
+  const y = Number((SHELF_BOTTOM_LEVEL_Y + level * SHELF_LEVEL_HEIGHT).toFixed(4))
+  const z = SHELF_ITEM_Z
+
+  return [x, y, z]
 }
 
 export function layoutShelfInstances<T extends SceneInstance>(instances: T[], itemsPerLevel = SHELF_ITEMS_PER_LEVEL): T[] {

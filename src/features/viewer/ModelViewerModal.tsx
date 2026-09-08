@@ -1,4 +1,4 @@
-import { Canvas } from '@react-three/fiber'
+import { SafeCanvas } from '../../components/SafeCanvas'
 import {
   ArrowDown,
   ArrowUp,
@@ -261,9 +261,8 @@ export function ModelViewerModal({
       {/* Main 3D Canvas Viewport */}
       <div className="viewer-fs-canvas-container">
         {modelUrl ? (
-          <Canvas
+          <SafeCanvas
             camera={{ position: [0, 0.5, 4.2], fov: 42, near: 0.005, far: 1000 }}
-            gl={{ antialias: true, alpha: false, preserveDrawingBuffer: true }}
           >
             <color attach="background" args={[backgroundColor]} />
             <ModelViewer
@@ -279,7 +278,7 @@ export function ModelViewerModal({
               cameraSignal={cameraSignal}
               onFpsLockChange={setIsFpsLocked}
             />
-          </Canvas>
+          </SafeCanvas>
         ) : (
           <div className="viewer-loading" role="status">
             <span>Carregando malha 3D...</span>
