@@ -149,7 +149,7 @@ export async function pollMeshyTask(
         ? 'Processando modelo 3D...'
         : status
 
-    if (onProgress) onProgress(Math.max(0, Math.min(100, progress)), statusDesc
+    if (onProgress) onProgress(Math.max(0, Math.min(100, progress)), statusDesc)
 
     if (status === 'succeeded' || status === 'completed') {
       const modelUrl = task.model_url || task.modelUrl || task.output?.model_url

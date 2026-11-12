@@ -75,17 +75,6 @@ export async function pickCustomCentralFolder(): Promise<string | null> {
   return null
 }
 
-  if (isTauriEnvironment()) {
-    try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      return await invoke<string>('get_system_models_dir')
-    } catch (err) {
-      console.warn('Erro ao obter pasta do sistema via Tauri:', err)
-    }
-  }
-  return 'Pasta Local do Aplicativo'
-}
-
 /**
  * Opens the system folder in Windows Explorer
  */
