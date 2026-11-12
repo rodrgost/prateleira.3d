@@ -20,12 +20,14 @@ import {
   RefreshCcw,
   RotateCw,
   SlidersHorizontal,
+  Sparkles,
   Sun,
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import type { GroundType, LightingPreset, ModelAsset, ShelfViewerSettings } from '../../domain/types'
 import { ModelViewer } from './ModelViewer'
+import { launchDesktopPet, isTauriEnvironment } from '../desktop-pet/desktopPetService'
 
 export interface ModelViewerModalProps {
   model: ModelAsset
@@ -235,6 +237,24 @@ export function ModelViewerModal({
             <SlidersHorizontal size={15} />
             <span>Controles 3D</span>
           </button>
+
+          {/* Desktop Pet Button (Apenas versão Desktop/Tauri) */}
+          {isTauriEnvironment() && (
+            <button
+              type="button"
+              className="viewer-controls-toggle-btn"
+              style={{
+                background: 'linear-gradient(135deg, rgba(196, 104, 67, 0.25) 0%, rgba(170, 84, 49, 0.4) 100%)',
+                borderColor: '#c46843',
+                color: '#f97316',
+              }}
+              onClick={() => void launchDesktopPet(model.id)}
+              title="Destacar modelo fora da janela como Desktop Pet flutuante na tela"
+            >
+              <Sparkles size={15} color="#f97316" />
+              <span>Desktop Pet</span>
+            </button>
+          )}
 
           <button
             type="button"

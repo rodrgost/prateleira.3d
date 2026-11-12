@@ -1,4 +1,6 @@
-const TRIPO_API_KEY_STORAGE = 'prateleira_tripo_api_key'
+// Deprecated: Tripo3D service removed. Use Meshy.ai instead.
+// This file is kept for reference but not used.
+
 const BASE_V3 = '/api/tripo'
 const BASE_V2 = '/api/tripo-v2'
 

@@ -21,12 +21,12 @@ import {
   createImageToModelTask,
   createTextToModelTask,
   downloadModelAsFile,
-  getStoredTripoApiKey,
-  pollTripoTask,
-  saveStoredTripoApiKey,
-  uploadTripoImage,
-  type TripoTaskResult,
-} from './tripoService'
+  getStoredMeshyApiKey,
+  pollMeshyTask,
+  saveStoredMeshyApiKey,
+  uploadMeshyImage,
+  type MeshyTaskResult,
+} from './meshyService'
 import type { Shelf } from '../../domain/types'
 import { rotateGlbModel } from '../../domain/modelTransform'
 

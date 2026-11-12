@@ -4,6 +4,8 @@ import {
   Cloud,
   Compass,
   Download,
+  FolderInput,
+  FolderOpen,
   Grid,
   HardDrive,
   Layers,
@@ -20,10 +22,17 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { GlobalSettings, GroundType, LightingPreset, Shelf, ShelfViewerSettings, SortOption } from '../../domain/types'
 import { DEFAULT_VIEWER_SETTINGS } from '../../storage/settingsStorage'
 import { GoogleDriveTab } from '../gdrive/GoogleDriveTab'
+import {
+  getStoredImportPreference,
+  saveStoredImportPreference,
+  getSystemModelsDirectory,
+  openSystemModelsDirectory,
+} from '../import/importService'
+import { isTauriEnvironment } from '../desktop-pet/desktopPetService'
 
 interface GlobalSettingsModalProps {
   settings: GlobalSettings
@@ -79,6 +88,12 @@ export function GlobalSettingsModal({
 }: GlobalSettingsModalProps) {
   const [activeTab, setActiveTab] = useState<'viewer' | 'appearance' | 'storage' | 'gdrive'>(initialTab)
   const [localSettings, setLocalSettings] = useState<GlobalSettings>(settings)
+  const [importPref, setImportPref] = useState<'ask' | 'move' | 'keep'>(() => getStoredImportPreference())
+  const [systemDir, setSystemDir] = useState<string>('')
+
+  useEffect(() => {
+    getSystemModelsDirectory().then(setSystemDir)
+  }, [])
 
   const updateViewer = (partial: Partial<ShelfViewerSettings>) => {
     setLocalSettings((prev) => ({
@@ -91,6 +106,7 @@ export function GlobalSettingsModal({
   }
 
   const handleSave = () => {
+    saveStoredImportPreference(importPref)
     onSave(localSettings)
     onClose()
   }
@@ -459,9 +475,75 @@ export function GlobalSettingsModal({
                 <div className="storage-status-details">
                   <h3>Armazenamento Local Utilizado</h3>
                   <p className="storage-status-number">{storageUsed}</p>
-                  <span>Os modelos e thumbnails ficam salvos exclusivamente neste navegador.</span>
+                  <span>Os modelos e thumbnails ficam salvos com segurança no armazenamento local.</span>
                 </div>
               </div>
+
+              {/* Pasta do Sistema / Desktop Directory */}
+              {isTauriEnvironment() && (
+                <div className="settings-section" style={{ marginTop: '16px' }}>
+                  <label className="section-title">
+                    <FolderOpen size={15} />
+                    <span>Pasta de Modelos no Computador</span>
+                  </label>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '12px',
+                      background: 'var(--bg-status, rgba(255,255,255,0.03))',
+                      border: '1px solid var(--border-subtle, rgba(255,255,255,0.08))',
+                      borderRadius: '10px',
+                      padding: '10px 14px',
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: '12px',
+                        color: 'var(--text-sub, #94a3b8)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                      title={systemDir}
+                    >
+                      {systemDir || 'Carregando...'}
+                    </span>
+                    <button
+                      type="button"
+                      className="action-outline-btn"
+                      onClick={() => void openSystemModelsDirectory()}
+                      style={{ flexShrink: 0 }}
+                    >
+                      <FolderOpen size={13} />
+                      <span>Abrir no Explorer</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Preferência de Importação (Desktop/Tauri) */}
+              {isTauriEnvironment() && (
+                <div className="settings-section" style={{ marginTop: '16px' }}>
+                  <label className="section-title">
+                    <FolderInput size={15} />
+                    <span>Ao Selecionar Arquivos para Importar</span>
+                  </label>
+                  <select
+                    className="settings-select"
+                    value={importPref}
+                    onChange={(e) => setImportPref(e.target.value as 'ask' | 'move' | 'keep')}
+                  >
+                    <option value="ask">Sempre perguntar (Mover ou Deixar onde está)</option>
+                    <option value="move">Mover automaticamente para a pasta da biblioteca</option>
+                    <option value="keep">Deixar sempre no local original (não mover)</option>
+                  </select>
+                  <p style={{ margin: '6px 0 0', fontSize: '11px', color: 'var(--text-muted, #64748b)' }}>
+                    Define se os arquivos 3D selecionados são movidos para a pasta central da Prateleira 3D ou se apenas são catalogados.
+                  </p>
+                </div>
+              )}
 
               <div className="storage-actions-list">
                 <div className="storage-action-item">

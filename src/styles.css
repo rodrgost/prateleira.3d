@@ -6381,5 +6381,25 @@ h1 {
   }
 }
 
+/* Desktop Pet Window Transparency and Floating Styles */
+html.desktop-pet-mode,
+body.desktop-pet-mode {
+  background: transparent !important;
+  background-color: transparent !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  user-select: none !important;
+}
+
+body.desktop-pet-mode #root {
+  background: transparent !important;
+  background-color: transparent !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  overflow: hidden !important;
+}
+
+
 
 

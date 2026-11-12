@@ -43,6 +43,14 @@ import { ModelViewerModal } from '../features/viewer/ModelViewerModal'
 import { ShelfShowcaseModal } from '../features/viewer/ShelfShowcaseModal'
 import { ensureModelFileDownloaded } from '../features/gdrive/googleDriveService'
 import { usePwaInstall } from '../pwa'
+import { launchDesktopPet, isTauriEnvironment } from '../features/desktop-pet/desktopPetService'
+import { ImportLocationModal } from '../features/import/ImportLocationModal'
+import {
+  type SelectedImportItem,
+  getStoredImportPreference,
+  processFileForImport,
+  select3DFilesNative,
+} from '../features/import/importService'
 
 export function App() {
   const { isInstallable, promptInstall } = usePwaInstall()
@@ -52,6 +60,8 @@ export function App() {
   const [showGlobalSettingsModal, setShowGlobalSettingsModal] = useState(false)
   const [settingsInitialTab, setSettingsInitialTab] = useState<'viewer' | 'appearance' | 'storage' | 'gdrive'>('viewer')
   const [showAiGeneratorModal, setShowAiGeneratorModal] = useState(false)
+  const [showImportLocationModal, setShowImportLocationModal] = useState(false)
+  const [pendingImportItems, setPendingImportItems] = useState<SelectedImportItem[]>([])
 
   const [activeShelfId, setActiveShelfId] = useState('all')
   const [query, setQuery] = useState('')
@@ -200,37 +210,68 @@ export function App() {
     }
   }, [selectedModel])
 
-  // Import files
-  async function importFiles(files: FileList | File[]) {
+  // Handle items selected for import (check user preference or ask)
+  function handleSelectedItems(items: SelectedImportItem[]) {
+    if (items.length === 0) return
+
+    // No navegador web (sem Tauri), não há acesso ao sistema de arquivos do computador;
+    // os arquivos são salvos diretamente no IndexedDB da prateleira sem exibir modal de mover pastas.
+    if (!isTauriEnvironment()) {
+      void executeImport(items, false)
+      return
+    }
+
+    const preference = getStoredImportPreference()
+    if (preference !== 'ask') {
+      void executeImport(items, preference === 'move')
+    } else {
+      setPendingImportItems(items)
+      setShowImportLocationModal(true)
+    }
+  }
+
+  // Execute import operation
+  async function executeImport(items: SelectedImportItem[], moveToSystemFolder: boolean) {
     setIsProcessing(true)
+    setMessage('Importando modelo(s) 3D...')
     const imported: ModelAsset[] = []
 
-    for (const file of Array.from(files)) {
-      const validation = await validateModelFile(file)
-      if (!validation.valid) {
-        setMessage(validation.message)
-        continue
-      }
-      const model: ModelAsset = {
-        id: crypto.randomUUID(),
-        name: file.name.replace(/\.(glb|gltf)$/i, ''),
-        format: validation.format,
-        sizeBytes: file.size,
-        shelfId: activeShelfId !== 'all' ? activeShelfId : undefined,
-        tags: [],
-        createdAt: new Date().toISOString(),
-      }
-      const targetShelf = activeShelfId !== 'all' ? shelves.find((s) => s.id === activeShelfId) : undefined
-      const targetSettings = resolveViewerSettings(targetShelf?.settings, globalSettings, theme)
-      const thumbnail = await generateModelThumbnail(file, targetSettings)
-      await shelfDatabase.models.put({ ...model, file, thumbnail: thumbnail ?? undefined })
+    for (const item of items) {
+      try {
+        const processed = await processFileForImport(item, moveToSystemFolder)
+        const fileToValidate =
+          processed.blob instanceof File
+            ? processed.blob
+            : new File([processed.blob], processed.name, { type: processed.blob.type })
+        const validation = await validateModelFile(fileToValidate)
+        if (!validation.valid) {
+          setMessage(validation.message)
+          continue
+        }
+        const model: ModelAsset = {
+          id: crypto.randomUUID(),
+          name: item.name || processed.name.replace(/\.(glb|gltf)$/i, ''),
+          format: validation.format,
+          sizeBytes: processed.blob.size,
+          shelfId: activeShelfId !== 'all' ? activeShelfId : undefined,
+          tags: [],
+          createdAt: new Date().toISOString(),
+        }
+        const targetShelf = activeShelfId !== 'all' ? shelves.find((s) => s.id === activeShelfId) : undefined
+        const targetSettings = resolveViewerSettings(targetShelf?.settings, globalSettings, theme)
+        const thumbnail = await generateModelThumbnail(processed.blob, targetSettings)
+        await shelfDatabase.models.put({ ...model, file: processed.blob, thumbnail: thumbnail ?? undefined })
 
-      if (thumbnail) {
-        const url = URL.createObjectURL(thumbnail)
-        thumbnailUrlsRef.current[model.id] = url
-        setThumbnailUrls((current) => ({ ...current, [model.id]: url }))
+        if (thumbnail) {
+          const url = URL.createObjectURL(thumbnail)
+          thumbnailUrlsRef.current[model.id] = url
+          setThumbnailUrls((current) => ({ ...current, [model.id]: url }))
+        }
+        imported.push(model)
+      } catch (err: any) {
+        console.error('Erro ao importar item:', err)
+        setMessage(`Erro ao importar ${item.name}: ${err?.message || err}`)
       }
-      imported.push(model)
     }
 
     if (imported.length > 0) {
@@ -247,10 +288,25 @@ export function App() {
       }
 
       setModels((current) => [...imported, ...current])
-      setMessage(`${imported.length} modelo(s) importado(s) com sucesso.`)
+      setMessage(
+        `${imported.length} modelo(s) importado(s)${
+          moveToSystemFolder ? ' e movido(s) para a pasta da biblioteca' : ''
+        } com sucesso.`
+      )
     }
 
     setIsProcessing(false)
+  }
+
+  // Import files wrapper
+  async function importFiles(files: FileList | File[]) {
+    const items: SelectedImportItem[] = Array.from(files).map((file) => ({
+      file,
+      filePath: (file as any).path,
+      name: file.name.replace(/\.(glb|gltf)$/i, ''),
+      sizeBytes: file.size,
+    }))
+    handleSelectedItems(items)
   }
 
   // Model rotate 90°
@@ -719,7 +775,24 @@ export function App() {
     }
   }, [models, activeShelfId, activeShelf, unassignedModels, query, sortBy])
 
-  const openFilePicker = () => fileInputRef.current?.click()
+  const openFilePicker = async () => {
+    if (isTauriEnvironment()) {
+      const paths = await select3DFilesNative()
+      if (paths && paths.length > 0) {
+        const items: SelectedImportItem[] = paths.map((path) => {
+          const fileName = path.split(/[/\\]/).pop() || 'modelo.glb'
+          return {
+            filePath: path,
+            name: fileName.replace(/\.(glb|gltf)$/i, ''),
+            sizeBytes: 0,
+          }
+        })
+        handleSelectedItems(items)
+        return
+      }
+    }
+    fileInputRef.current?.click()
+  }
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault()
     void importFiles(event.dataTransfer.files)
@@ -1046,7 +1119,10 @@ export function App() {
               accept=".glb,.gltf"
               multiple
               onChange={(event) => {
-                if (event.target.files) void importFiles(event.target.files)
+                if (event.target.files && event.target.files.length > 0) {
+                  void importFiles(event.target.files)
+                }
+                event.target.value = ''
               }}
             />
 
@@ -1118,6 +1194,16 @@ export function App() {
                         {shelfName && <span className="compact-shelf-badge">{shelfName}</span>}
                       </div>
                       <div className="compact-card-actions" onClick={(e) => e.stopPropagation()}>
+                        {isTauriEnvironment() && (
+                          <button
+                            type="button"
+                            className="compact-action-btn"
+                            title="Destacar fora da janela como Desktop Pet"
+                            onClick={() => void launchDesktopPet(model.id)}
+                          >
+                            <Sparkles size={13} color="#c46843" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="compact-action-btn"
@@ -1214,6 +1300,18 @@ export function App() {
                                   <ArrowDown size={13} />
                                 </button>
                               </>
+                            )}
+                            {isTauriEnvironment() && (
+                              <button
+                                className="thumb-icon-btn"
+                                title="Destacar fora da janela como Desktop Pet"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  void launchDesktopPet(model.id)
+                                }}
+                              >
+                                <Sparkles size={13} color="#c46843" />
+                              </button>
                             )}
                             <button
                               className="thumb-icon-btn"
@@ -1397,6 +1495,21 @@ export function App() {
           </form>
         </div>
       )}
+
+      {/* Import Location Confirmation Modal */}
+      <ImportLocationModal
+        items={pendingImportItems}
+        isOpen={showImportLocationModal}
+        onConfirm={(choice) => {
+          setShowImportLocationModal(false)
+          void executeImport(pendingImportItems, choice === 'move')
+          setPendingImportItems([])
+        }}
+        onCancel={() => {
+          setShowImportLocationModal(false)
+          setPendingImportItems([])
+        }}
+      />
     </main>
   )
 }
